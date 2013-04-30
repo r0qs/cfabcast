@@ -1,7 +1,7 @@
 package consensus
 
 // Value can be anything
-type Value interface{}
+type Value []interface{}
 
 type cstruct interface {
   Append(int64,Value)

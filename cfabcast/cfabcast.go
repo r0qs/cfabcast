@@ -8,25 +8,31 @@ import (
 
 func Run() {
   
+  consensus.Domain = make(map[int64]consensus.Proposer)
   var p consensus.Proposer
   for i := 0; i < 3 ; i++ {
-    p.Set(int64(i),0, i+97)
-    consensus.Domain = append(consensus.Domain,p)
+    value := make([]interface{},0)
+    p.Set(int64(i),0, value)
+    consensus.Domain[int64(i)] = p
   }
   fmt.Println(consensus.Domain)
   
-  vmap := make(mconsensus.VMap)
-  
-  fmt.Println(vmap.IsBottom())
-  for _, p := range consensus.Domain {
-    i,_,v := p.Get()
-    vmap[i] = v
-  }
-  fmt.Println(vmap)
-  fmt.Println(vmap.IsBottom())
-  
-  vmap.Append(3,230)
-  vmap.Append(6,200)
-  fmt.Println(vmap)
-  
+  vm := make(mconsensus.VMap)
+
+  values := make([]interface{},0)
+  values =  append(values,2,1,4)
+  vm.Append(0,values)
+
+  values2 := make([]interface{},0)
+  values2 =  append(values2,6,7,8)
+  vm.Append(0,values2)
+
+  values3 := make([]interface{},0)
+  values3 =  append(values3,9,10)
+  vm.Append(2,values3)
+
+  fmt.Println(vm)
+
+  fmt.Println("Domain of vmap: ", mconsensus.Dom(vm))
 }
+
