@@ -1,12 +1,14 @@
 package consensus
 
 // Value can be anything
-type Value []interface{}
+// A Value is NIL if value = <nil>
+type Value interface{}
 
 type cstruct interface {
   Append(int64,Value)
-  IsBottom() bool
   IfExists(int64)
+  IsBottom() bool
+  HasPrefix(interface{}, interface{})
 }
 
 

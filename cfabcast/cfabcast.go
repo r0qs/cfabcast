@@ -1,4 +1,4 @@
-package cfabcast
+  package cfabcast
 
 import (
   "fmt"
@@ -9,30 +9,36 @@ import (
 func Run() {
   
   consensus.Domain = make(map[int64]consensus.Proposer)
-  var p consensus.Proposer
   for i := 0; i < 3 ; i++ {
-    value := make([]interface{},0)
-    p.Set(int64(i),0, value)
+    var p consensus.Proposer
+    value := string(97+i)
+    p.Set(0, value)
     consensus.Domain[int64(i)] = p
   }
-  fmt.Println(consensus.Domain)
+  fmt.Println("Domain:",consensus.Domain)
   
-  vm := make(mconsensus.VMap)
+  w := make(mconsensus.VMap)
 
-  values := make([]interface{},0)
-  values =  append(values,2,1,4)
-  vm.Append(0,values)
+//  values := make([]interface{},0)
+//  values =  append(values,"d","e")
+  w.Append(0,consensus.Domain[0].GetValue())
+  w.Append(1,consensus.Domain[1].GetValue())
+  w.Append(2,consensus.Domain[2].GetValue())
 
-  values2 := make([]interface{},0)
-  values2 =  append(values2,6,7,8)
-  vm.Append(0,values2)
+  w.Append(1,"d")
+  w.Append(2,"x")
+  v := make(mconsensus.VMap)
+  v.Append(1,consensus.Domain[1].GetValue())
+  v.Append(0,consensus.Domain[0].GetValue())
+  v.Append(2,consensus.Domain[2].GetValue())
+  v.Append(1,"d")
+  v.Append(2,"x")
+  v.Append(2,"y")
 
-  values3 := make([]interface{},0)
-  values3 =  append(values3,9,10)
-  vm.Append(2,values3)
-
-  fmt.Println(vm)
-
-  fmt.Println("Domain of vmap: ", mconsensus.Dom(vm))
+  fmt.Println("w:",w)
+  fmt.Println("v:",v)
+  fmt.Println("Domain of vmap w: ", w.Dom())
+  fmt.Println("Domain of vmap v: ", v.Dom())
+  fmt.Println(mconsensus.HasPrefix(w,v))
 }
 
