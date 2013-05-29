@@ -63,3 +63,44 @@ func HasPrefix(w, v VMap) bool {
   return false
 }
 
+// GetPrefix return a vmap that is prefix of v and w.
+func getPrefix(w, v VMap) (VMap) {
+  prefix := make(VMap)
+  wdomain := w.Dom()
+  vdomain := v.Dom()
+  if len(wdomain) >= len(vdomain) {
+    for key := range vdomain {
+      wval, ok := w[key]
+      if v[key] == wval && ok {
+        prefix.Append(key,v[key])
+      }
+    }
+  } else {
+    for key := range wdomain {
+      vval, ok := v[key]
+      if w[key] == vval && ok {
+        prefix.Append(key,w[key])
+      }
+    }
+  }
+  return prefix
+}
+
+// GLB calculates the greatest lower bound of a set of value mappings.
+// Its a function that maps each element that belongs to the domain intersection
+// of all mappings and whose mapped value in all mappings is the same to its 
+// mapped value in all value mappings.
+func GLB(vmaps ...VMap) (v VMap) {
+  switch len(vmaps) {
+  case 0:
+    return v
+  case 1:
+    return vmaps[0]
+  default:
+    v = vmaps[0]
+    for _, u := range vmaps[1:] {
+      v = getPrefix(v,u)
+    }
+  }
+  return v
+}
