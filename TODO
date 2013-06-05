@@ -1,0 +1,12 @@
+* M-Consensus
+`-Implement go tests
+
+* Consensus
+* Paxos
+* Fast Paxos
+* Atomic Broadcast
+* Colision-fast Paxos
+* Colision-fast Atomic Broadcast
+* Generalized Consensus
+* Multicoordinated Generalized Consensus
+* Byzantine ??

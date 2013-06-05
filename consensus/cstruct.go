@@ -5,8 +5,8 @@ package consensus
 type Value interface{}
 
 type cstruct interface {
-  Append(int64,Value)
-  IfExists(int64)
+  Append(uint64,Value)
+  IfExists(uint64)
   IsBottom() bool
   HasPrefix(interface{}, interface{})
 }
