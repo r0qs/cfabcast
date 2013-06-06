@@ -2,8 +2,6 @@ package mconsensus
 
 import (
   "bitbucket.org/r0qs/libconsensus/consensus"
-  "bitbucket.org/r0qs/libconsensus/bitmap"
-  "math"
 )
 
 // ValueMap implements a cstruct and maps proposer to value ([p->v])
@@ -56,9 +54,7 @@ func (vm ValueMap) IfExists(pid uint64) bool {
 func (vm *ValueMap) Append(pid uint64, value consensus.Value) {
   if !vm.IfExists(pid) {
     vm.domain |= 1 << pid
-    if vm.domain != 0 {
-      vm.domainSize = int(math.Logb(float64(vm.domain))) + 1
-    }
+    vm.domainSize = consensus.SizeOf(vm.domain)
     vm.vmap[pid] = value
   }
 }
@@ -77,7 +73,7 @@ func (vm ValueMap) IsBottom() bool{
 func HasPrefix(w, v ValueMap) bool {
   // FIXME: PopCount64 may not be necessary, a simple comparison 
   // between domainSize can solve the problem, or not (need tests!)
-  if bitmap.PopCount64(w.domain) >= bitmap.PopCount64(v.domain) {
+  if consensus.PopCount64(w.domain) >= consensus.PopCount64(v.domain) {
     // The Bottom vmap is prefix of any vmap
     if v.domain == 0 {
       return true
@@ -105,7 +101,7 @@ func getPrefix(w, v ValueMap) (prefix ValueMap) {
   var key uint64 = 0
   var bit uint64 = 1
   prefix.New()
-  if bitmap.PopCount64(w.domain) >= bitmap.PopCount64(v.domain) {
+  if consensus.PopCount64(w.domain) >= consensus.PopCount64(v.domain) {
     for i := 0; i < v.domainSize; i++ {
       if v.domain&bit != 0 {
           wval, ok := w.vmap[key]
@@ -131,31 +127,67 @@ func getPrefix(w, v ValueMap) (prefix ValueMap) {
   return prefix
 }
 
-// GLB calculates the greatest lower bound of a set of value mappings.
+// GLB calculates the Greatest Lower Bound of a set of value mappings.
 // Its a function that maps each element that belongs to the domain intersection
 // of all mappings and whose mapped value in all mappings is the same to its 
 // mapped value in all value mappings.
 func GLB(vmaps ...ValueMap) (v ValueMap) {
   switch len(vmaps) {
-  case 0:
-    return v
-  case 1:
-    return vmaps[0]
-  default:
-    v = vmaps[0]
-    for _, u := range vmaps[1:] {
-      v = getPrefix(v,u)
-    }
+    case 0:
+      return v
+    case 1:
+      return vmaps[0]
+    default:
+      v = vmaps[0]
+      for _, u := range vmaps[1:] {
+        v = getPrefix(v,u)
+      }
   }
   return v
 }
 
-//TODO
-func AreCompatible(w, v ValueMap) {}
+// A ValueMap v is defined to be compatible with a ValueMap w if their common domain elements
+// are mapped to the same values.
+func AreCompatible(w, v ValueMap) bool {
+  inter := consensus.Intersection(w.domain,v.domain)
+  var key uint64 = 0
+  var bit uint64 = 1
+  if inter != 0 || w.IsBottom() || v.IsBottom() { // a bottom ValueMap is always compatible with any ValueMap
+    for i := 0 ; i < consensus.SizeOf(inter); i++ {
+      if inter&bit != 0 {
+        if w.vmap[key] != v.vmap[key] {
+         return false
+        }
+      }
+      key += 1
+      bit <<= 1
+    }
+    return true
+  }
+  return false
+}
 
-//TODO
-func IsCompatible() {}
+// A set of ValueMaps is compatible if its elements are pairwise compatible.
+func IsCompatible(vmaps ...ValueMap) bool {
+  switch len(vmaps) {
+    case 0,1:
+      return true
+    default:
+      v := vmaps[0]
+      for _, u := range vmaps[1:] {
+        if !AreCompatible(v,u) { // If not compatible
+          return false
+        }
+      }
+  }
+  return true
+}
 
-//TODO
-func LUB(vmaps ...ValueMap) (v ValueMap) { return v }
+// LUB calculate the Least Upper Bound of a set of value mappings.
+// Its a function that maps each element that belongs to the domain of any of the mappings
+// to its mapped value of the mappings whose domain is belongs to.
+func LUB(vmaps ...ValueMap) (v ValueMap) {
+  
+  return v
+}
 

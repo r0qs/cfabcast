@@ -1,4 +1,8 @@
-package bitmap
+package consensus
+
+import (
+  "math"
+)
 
 // Set all bits to one
 const allOnes  uint64 = 0xffffffffffffffff
@@ -65,6 +69,15 @@ func ClearAll(b uint64) uint64{
 // Toggle a bit in the Bitmap b
 func Toggle(bit uint, b uint64) uint64{
   return (b ^ (1 << bit))
+}
+
+// Return the number of bits of a BitMap b
+func SizeOf(b uint64) (i int) {
+  i = int(math.Logb(float64(b))) + 1
+  if i > 0 {
+    return i
+  }
+  return 0
 }
 
 /* TODO:

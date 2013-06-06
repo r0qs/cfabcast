@@ -1,4 +1,4 @@
-  package cfabcast
+package cfabcast
 
 import (
   "fmt"
@@ -15,28 +15,34 @@ func Run() {
 
   w.Append(0,consensus.DomainMap[0].GetValue())
   w.Append(5,consensus.DomainMap[5].GetValue())
+  w.Append(3,consensus.DomainMap[3].GetValue())
+  w.Append(4,consensus.DomainMap[4].GetValue())
 
   var v mconsensus.ValueMap
   v.New()
 
   v.Append(0,consensus.DomainMap[0].GetValue())
+  v.Append(3,consensus.DomainMap[3].GetValue())
   v.Append(4,consensus.DomainMap[4].GetValue())
 
   var z mconsensus.ValueMap
   z.New()
 
-  z.Append(3,consensus.DomainMap[3].GetValue())
   z.Append(4,consensus.DomainMap[4].GetValue())
   z.Append(2,consensus.DomainMap[2].GetValue())
   z.Append(0,consensus.DomainMap[0].GetValue())
   z.Append(5,consensus.DomainMap[5].GetValue())
   z.Append(1,consensus.DomainMap[1].GetValue())
 
-  fmt.Println(w,v,z)
+  fmt.Println("w:",w)
+  fmt.Println("v:",v)
+  fmt.Println("z:",z)
 
-  fmt.Println(mconsensus.HasPrefix(z,w))
-
+//  fmt.Println(mconsensus.HasPrefix(z,w))
   fmt.Println(mconsensus.GLB(w,z,v))
-  fmt.Println(z.IsComplete())
+
+//  fmt.Println(mconsensus.AreCompatible(w,z))
+  fmt.Println(mconsensus.AreCompatible(w,v))
+  fmt.Println(mconsensus.IsCompatible(w,z,v))
 }
 
