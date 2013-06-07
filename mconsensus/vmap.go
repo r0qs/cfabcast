@@ -6,14 +6,6 @@ import (
 
 // ValueMap implements a cstruct and maps proposer to value ([p->v])
 // based on proposer key (id).
-//
-// A vmap is Botton if vmap = []
-//
-// A vmap is COMPLETE iff its ValueMap domain is equals consensus.DomainBitMap,
-// for example, considering a consensus.Domain = map[0:{0 ade} 2:{1 c} 1:{0 b}]
-// a complete vmap is: map[2:c 1:b 0:ade] and your domain is: 
-// map[0:{0 ade} 1:{0 b} 2:{1 c}].
-// In other words valuemap.domain == consensus.DomainBitMap
 type VMap map[uint64]consensus.Value
 
 type ValueMap struct {
@@ -23,6 +15,7 @@ type ValueMap struct {
 }
 
 // Create a New ValueMap
+// TODO: Store the number of set bits may be useful in future.
 func (vm *ValueMap) New() {
   vm.domain = 0
   vm.domainSize = 0
@@ -35,6 +28,7 @@ func (vm ValueMap) Dom() (uint64) {
 }
 
 // Verify if a ValueMap is a Complete.
+// A ValueMap is COMPLETE iff its domain is equals consensus.DomainBitMap.
 func (vm ValueMap) IsComplete() bool{
   if vm.domain == consensus.DomainBitMap {
     return true
@@ -48,9 +42,9 @@ func (vm ValueMap) IfExists(pid uint64) bool {
   return ok
 }
 
-// Append a value on VMap.
+// Append a value on ValueMap.
 // Extends the v-mapping vmap with the s-mapping (pid, v) iff proposer is not
-// in the domain of this vmap
+// in the domain of this vmap.
 func (vm *ValueMap) Append(pid uint64, value consensus.Value) {
   if !vm.IfExists(pid) {
     vm.domain |= 1 << pid
@@ -59,7 +53,8 @@ func (vm *ValueMap) Append(pid uint64, value consensus.Value) {
   }
 }
 
-// Verify if a VMap is a Bottom (empty) map.
+// Verify if a ValueMap is a Bottom (empty) map.
+// A vmap is Bottom if vmap = []
 func (vm ValueMap) IsBottom() bool{
   if vm.domain == 0 || len(vm.vmap) == 0 {
     return true
@@ -67,9 +62,9 @@ func (vm ValueMap) IsBottom() bool{
   return false
 }
 
-// HasPrefix tests whether the VMap w has v as prefix.
-// A VMap v is a prefix of a VMap w if it can be extended to w by a sequence
-// of appends applications with single mappings
+// HasPrefix tests whether the ValueMap w has v as prefix.
+// A ValueMap v is a prefix of a ValueMap w if it can be extended to w by a 
+// sequence of appends applications with single mappings.
 func HasPrefix(w, v ValueMap) bool {
   // FIXME: PopCount64 may not be necessary, a simple comparison 
   // between domainSize can solve the problem, or not (need tests!)
@@ -95,7 +90,7 @@ func HasPrefix(w, v ValueMap) bool {
   return false
 }
 
-// getPrefix return a vmap that is prefix of v and w.
+// getPrefix return a ValueMap that is prefix of v and w.
 // TODO: Maybe there's a better way to do it
 func getPrefix(w, v ValueMap) (prefix ValueMap) {
   var key uint64 = 0
@@ -146,13 +141,14 @@ func GLB(vmaps ...ValueMap) (v ValueMap) {
   return v
 }
 
-// A ValueMap v is defined to be compatible with a ValueMap w if their common domain elements
-// are mapped to the same values.
+// A ValueMap v is defined to be compatible with a ValueMap w if their common 
+// domain elements are mapped to the same values.
 func AreCompatible(w, v ValueMap) bool {
   inter := consensus.Intersection(w.domain,v.domain)
   var key uint64 = 0
   var bit uint64 = 1
-  if inter != 0 || w.IsBottom() || v.IsBottom() { // a bottom ValueMap is always compatible with any ValueMap
+  // a bottom ValueMap is always compatible with any ValueMap
+  if inter != 0 || w.IsBottom() || v.IsBottom() { 
     for i := 0 ; i < consensus.SizeOf(inter); i++ {
       if inter&bit != 0 {
         if w.vmap[key] != v.vmap[key] {
@@ -183,11 +179,50 @@ func IsCompatible(vmaps ...ValueMap) bool {
   return true
 }
 
+// Copy a ValueMap w to v
+func Copy(w ValueMap) (v ValueMap){
+  v.New()
+  v.domain = w.domain
+  v.domainSize = w.domainSize
+  for key, value := range w.vmap {
+    v.vmap[key] = value
+  }
+  return v
+}
+
+// Append all set bits of a ValueMap v to a ValueMap vm based on a given bitmask
+func (vm *ValueMap) AppendWithBitMask(mask uint64, v ValueMap){
+  var key uint64 = 0
+  var bit uint64 = 1
+  for i := 0 ; i < consensus.SizeOf(mask); i++ {
+    if mask&bit != 0 {            // Only set bits
+      vm.Append(key,v.vmap[key])
+    }
+    key += 1
+    bit <<= 1
+  }
+}
+
 // LUB calculate the Least Upper Bound of a set of value mappings.
-// Its a function that maps each element that belongs to the domain of any of the mappings
-// to its mapped value of the mappings whose domain is belongs to.
+// Its a function that maps each element that belongs to the domain of any of 
+// the mappings to its mapped value of the mappings whose domain is belongs to.
+// TODO: To minimize the number of appends operation, "v" may be initially copied 
+// from the domain that have more set bits (bigger popcount), instead vmaps[0].
 func LUB(vmaps ...ValueMap) (v ValueMap) {
-  
+  switch len(vmaps) {
+    case 0:
+      return v
+    case 1:
+      return vmaps[0]
+    default:
+      v = Copy(vmaps[0])
+      for _, u := range vmaps[1:] {
+        mask := u.domain &^ v.domain  // Get bit that only exists in u
+        if mask != 0 {
+          v.AppendWithBitMask(mask,u) // Then append then in v
+        }
+      }
+  }
   return v
 }
 
