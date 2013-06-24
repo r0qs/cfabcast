@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"bytes"
 	"math"
 )
 
@@ -105,6 +106,22 @@ func PopCount64(b BitMap) BitMap {
 	b = (b + (b >> 4)) & m4        //put count of each 8 bits into those 8 bits 
 	return (b * h01) >> 56         //returns left 8 bits of b + (b<<8) + (b<<16) +
 	// + (b<<24) + ... 
+}
+
+func DumpBits(b BitMap) string {
+	buffer := bytes.NewBufferString("")
+	if b <= 0 {
+		return "0"
+	}
+	for i := SizeOf(b); i > 0; i--{
+		if b & 1 == 1 {
+			buffer.WriteString("1")
+		} else {
+			buffer.WriteString("0")
+		}
+		b >>= 1
+	}
+	return Reverse(buffer.String())
 }
 
 /* TODO:
