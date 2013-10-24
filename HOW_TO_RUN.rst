@@ -3,16 +3,16 @@
 Run sbt install script
 ----------------------
 
-.. code-block:: console
+.. code-block:: 
 	$ chmod +x sbt_install.sh
 	$ ./sbt_install.sh
 
- Run sbt
+Run sbt
 --------
 
 Please look in the official `documentation of sbt <http://www.scala-sbt.org/release/docs/Getting-Started/Running.html>`_ for more commands.
 
-.. code-block:: console
-	$ ./sbt/bin/sbt
+.. code-block::
+    $ ./sbt/bin/sbt
     > compile
     > run

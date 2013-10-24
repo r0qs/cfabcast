@@ -13,4 +13,4 @@ based on this article_.
 Running
 =======
 
-Please read the `HOW_TO_RUN` file.
+Please read the *HOW_TO_RUN* file.
