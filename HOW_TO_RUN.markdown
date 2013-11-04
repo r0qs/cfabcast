@@ -1,12 +1,12 @@
-# HOW TO RUN THIS CODE
+# How to run this code
 
-## Run sbt install script
+### Run sbt install script
 
 ```
 $ chmod +x sbt_install.sh
 $ ./sbt_install.sh
 ```
-## Run sbt
+### Run sbt
 
 Please look in the official [documentation of sbt](http://www.scala-sbt.org/release/docs/Getting-Started/Running.html) for more commands.
 

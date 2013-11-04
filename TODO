@@ -1,6 +1,11 @@
 * Consensus
-`- Create actors using akka
+`- Define protocol
 `- Define cstruct
+`- Create actors using akka
+`- Send/receive messages between actors using akka
+`- Make a simple tests of protocol
+`- Serialize messages and use UDP
+`- Test more
 * M-Consensus
 `- Implement vmap
 * Paxos
