@@ -1,9 +1,10 @@
 package cfpaxos.agents
 
-import akka.actor.Actor
+import akka.actor._
+import cfpaxos._
+import cfpaxos.messages._
+import cfpaxos.cstructs.cstruct._
+import cfpaxos.protocol._
 
-class Learner extends Actor {
-  def receive = {
-    case _ => throw new Error("Not defined yet!")
-  }
+trait Learner extends Actor with LoggingFSM[State, Metadata]{
 }

@@ -11,7 +11,5 @@ $ ./sbt_install.sh
 Please look in the official [documentation of sbt](http://www.scala-sbt.org/release/docs/Getting-Started/Running.html) for more commands.
 
 ```
-$ ./sbt/bin/sbt
-> compile
-> run
+$ ./sbt/bin/sbt 'run-main Main 2551'
 ```
