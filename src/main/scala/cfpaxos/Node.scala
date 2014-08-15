@@ -44,7 +44,6 @@ class Node(pActor: ActorRef, waitFor: Int) extends Actor with ActorLogging {
       nodes += member.address
       context.actorSelection(nodesPath(member.address)) ! Identify(member.address)
     }
-//    context.system.scheduler.scheduleOnce(5.seconds, pActor, Proposal("ola"))
   }
 
   def receive = {
