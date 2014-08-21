@@ -8,30 +8,38 @@ import cfpaxos.protocol._
 
 trait Proposer {
   this: ProposerActor =>
-
+ 
+  // TODO: isCoordinatorOf(round)
   val isCollisionFast: Boolean = false
   val isCoordinator: Boolean = false
 
 //  def propose(value: CStruct) = ???
 //  send Proposal(value, prnd) to some collision-fast proposer
 
-//  def phase1A(rnd: Int) = ???
 // TODO  
 //  def phase2A = ???
 //  def phase2Prepare = ???
 
+
   val proposerBehavior: StateFunction = {
+//    case Event(msg: Request, data: Meta) =>
     // Receive a proposal msg from a client
     case Event(msg: Proposal, data: Meta) =>
-      // send the proposal to some cfproposer (filter m.members)
+      log.info("Receive a proposal: {}, forward to a cfproposer", msg)
+      // Phase1A
+      if (this.isCoordinator && data.round < msg.rnd) {
+        data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
+        stay() using data.copy(round = msg.rnd, value = TStruct(None))
+      }
       stay()
+
     // Phase2Prepare
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
-    case Event(msg: Msg2Start, data: Meta) if(data.round < msg.rnd) =>
+    case Event(msg: Msg2Prepare, data: Meta) if(data.round < msg.rnd) =>
       val rnd = msg.rnd
-      var v = msg.cval
-      if(msg.cval.isBottom)
-        v = Bottom
+      var v = msg.value
+      if(v.isBottom)
+        stay() using data.copy(round = rnd, value = TStruct(None))
       stay() using data.copy(round = rnd, value = v)
   }
 }

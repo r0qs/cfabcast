@@ -3,11 +3,11 @@ package cfpaxos.cstructs
 // TODO: This is only for test, in future, will be generic,
 // and a List[Option[String]] for atomic broadcast, or something like that
 trait CStruct {
-  val v: Option[String]
-  def isBottom = (v == None)
+  val value: Option[String]
+  def isBottom = (value == None)
 }
 
-case class TStruct(v: Option[String]) extends CStruct
+case class TStruct(value: Option[String]) extends CStruct
 object Bottom extends CStruct {
-  val v = None
+  val value = None // Define other value for Bottom rather than None
 }

@@ -8,7 +8,6 @@ import cfpaxos.cstructs._
 private[protocol] trait StateMetadata extends Serializable {
   sealed trait Metadata {
     def config: ClusterConfiguration
-    def members = config.members
     val round: Long
     val value: CStruct
   }

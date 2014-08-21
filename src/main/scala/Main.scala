@@ -14,15 +14,13 @@ object Main {
   def main(args: Array[String]): Unit = {
     val port = if (args.isEmpty) "0" else args(0)
     val config = ConfigFactory.parseString(s"akka.remote.netty.tcp.port=$port").
-      withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfpaxos]")).
+      withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfpaxos, proposer]")).
       withFallback(ConfigFactory.load())
-
     val system = ActorSystem("ClusterSystem", config)
-    val pActor = system.actorOf(Props[ProposerActor], s"proposer")
-    system.actorOf(Node.props(pActor, 2), s"node")
-    // FIXME: Remove this ugly test
-    //system.scheduler.scheduleOnce(5.seconds, pActor, Msg2Start(1, new TStruct(Some("ola"))))
-    //system.scheduler.scheduleOnce(15.seconds, pActor, Proposal(new TStruct(Some("eita"))))
+    val a = system.actorOf(Props[ProposerActor], "proposer")
+    system.actorOf(Node.props(a, 2), "node")
+    system.scheduler.scheduleOnce(10.seconds, a, Msg2Prepare(1, new TStruct(Some("ola"))))
+    system.scheduler.scheduleOnce(15.seconds, a, Proposal(0, new TStruct(Some("eita"))))
   }
 }
 
