@@ -19,8 +19,8 @@ object Main {
     val system = ActorSystem("ClusterSystem", config)
     val a = system.actorOf(Props[ProposerActor], "proposer")
     system.actorOf(Node.props(a, 2), "node")
-    system.scheduler.scheduleOnce(10.seconds, a, Msg2Prepare(1, new TStruct(Some("ola"))))
-    system.scheduler.scheduleOnce(15.seconds, a, Proposal(0, new TStruct(Some("eita"))))
+    system.scheduler.scheduleOnce(10.seconds, a, Msg2Prepare(1, new Value(Some("ola"))))
+    system.scheduler.scheduleOnce(15.seconds, a, Proposal(0, new Value(Some("eita"))))
   }
 }
 

@@ -63,7 +63,6 @@ class Node(actor: ActorRef, waitFor: Int) extends Actor with ActorLogging {
     
     case Terminated(ref) =>
       log.info("Actor {} terminated", ref)
-      //TODO remove node from tree
       nodes = nodes.filterNot(_ == ref)
 
     case msg: Message =>

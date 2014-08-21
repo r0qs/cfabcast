@@ -7,7 +7,7 @@ trait CStruct {
   def isBottom = (value == None)
 }
 
-case class TStruct(value: Option[String]) extends CStruct
+case class Value(value: Option[String]) extends CStruct
 object Bottom extends CStruct {
   val value = None // Define other value for Bottom rather than None
 }

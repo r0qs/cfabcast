@@ -29,7 +29,7 @@ trait Proposer {
       // Phase1A
       if (this.isCoordinator && data.round < msg.rnd) {
         data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
-        stay() using data.copy(round = msg.rnd, value = TStruct(None))
+        stay() using data.copy(round = msg.rnd, value = Value(None))
       }
       stay()
 
@@ -39,11 +39,10 @@ trait Proposer {
       val rnd = msg.rnd
       var v = msg.value
       if(v.isBottom)
-        stay() using data.copy(round = rnd, value = TStruct(None))
+        stay() using data.copy(round = rnd, value = Value(None))
       stay() using data.copy(round = rnd, value = v)
   }
 }
-
 
 class ProposerActor extends Actor
   with LoggingFSM[State, Metadata]
