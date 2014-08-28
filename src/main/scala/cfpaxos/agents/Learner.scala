@@ -6,6 +6,5 @@ import cfpaxos.messages._
 import cfpaxos.cstructs._
 import cfpaxos.protocol._
 
-trait Learner {}
-
+trait Learner 
 class LearnerActor extends Actor with LoggingFSM[State, Metadata]{}

@@ -37,7 +37,7 @@ class Node(actor: ActorRef, waitFor: Int) extends Actor with ActorLogging {
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
 
-  def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "node*"
+  def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "proposer*"
 
   def register(member: Member): Unit = {
     if (member.hasRole("cfpaxos")) {
@@ -64,10 +64,6 @@ class Node(actor: ActorRef, waitFor: Int) extends Actor with ActorLogging {
     case Terminated(ref) =>
       log.info("Actor {} terminated", ref)
       nodes = nodes.filterNot(_ == ref)
-
-    case msg: Message =>
-      // Forward (proxy) all other msgs to protocol actor
-      actor forward msg
   }
 }
 

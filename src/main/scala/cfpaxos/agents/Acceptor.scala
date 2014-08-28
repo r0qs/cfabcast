@@ -6,5 +6,5 @@ import cfpaxos.messages._
 import cfpaxos.cstructs._
 import cfpaxos.protocol._
 
-trait Acceptor {}
+trait Acceptor 
 class AcceptorActor extends Actor with LoggingFSM[State, Metadata]{}

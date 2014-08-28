@@ -17,10 +17,10 @@ object Main {
       withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfpaxos, proposer]")).
       withFallback(ConfigFactory.load())
     val system = ActorSystem("ClusterSystem", config)
-    val a = system.actorOf(Props[ProposerActor], "proposer")
+    val a = system.actorOf(ProposerActor.props(0), "proposer")
     system.actorOf(Node.props(a, 2), "node")
-    system.scheduler.scheduleOnce(10.seconds, a, Msg2Prepare(1, new Value(Some("ola"))))
-    system.scheduler.scheduleOnce(15.seconds, a, Proposal(0, new Value(Some("eita"))))
+    system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), new Value(Some("eita"))))
+    system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), new Value(Some("ola"))))
   }
 }
 

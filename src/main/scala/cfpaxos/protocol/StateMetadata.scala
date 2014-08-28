@@ -8,17 +8,17 @@ import cfpaxos.cstructs._
 private[protocol] trait StateMetadata extends Serializable {
   sealed trait Metadata {
     def config: ClusterConfiguration
-    val round: Long
+    val round: Round
     val value: CStruct
   }
 
   case class Meta(
     config: ClusterConfiguration,
-    round: Long,
+    round: Round,
     value: CStruct
   )extends Metadata
 
   object Meta {
-    def initial = new Meta(ClusterConfiguration(), 0, Bottom)
+    def initial = new Meta(ClusterConfiguration(), Round(0,0, Set()), Bottom)
   }
 }

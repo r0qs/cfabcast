@@ -3,6 +3,7 @@ package cfpaxos.messages
 import akka.actor.ActorRef
 import akka.cluster.Member
 import cfpaxos.cstructs._
+import cfpaxos._
 
 /**
  * Define protocol messages for collision-fast paxos.
@@ -10,25 +11,25 @@ import cfpaxos.cstructs._
 sealed class Message
 
 // Message sent by proposer p to the collision-fast proposer for the current round of p.
-case class Proposal(rnd: Long, value: CStruct) extends Message
+case class Proposal(rnd: Round, value: CStruct) extends Message
 
 // Message sent by coordinator c to all acceptors.
-case class Msg1A(rnd: Long) extends Message
+case class Msg1A(rnd: Round) extends Message
 
 // Message sent by acceptor a to the coordinator of round rnd.
-case class Msg1B(rnd: Long, vrnd: Long, vval: CStruct) extends Message
+case class Msg1B(rnd: Round, vrnd: Round, vval: CStruct) extends Message
 
 // Message sent by coordinator to all proposers and acceptors.
-case class Msg2Start(rnd: Long, value: CStruct) extends Message
+case class Msg2Start(rnd: Round, value: CStruct) extends Message
 
 // Message sent by coordinator c to all proposers.
-case class Msg2Prepare(rnd: Long, value: CStruct) extends Message
+case class Msg2Prepare(rnd: Round, value: CStruct) extends Message
 
 // Message sent by collision-fast proposer cfp to all acceptors and others collision-fast proposers on the same round rnd.
-case class Msg2A(rnd: Long, value: CStruct) extends Message
+case class Msg2A(rnd: Round, value: CStruct) extends Message
 
 // Message sent by acceptor a to all learners.
-case class Msg2B(rnd: Long, value: CStruct) extends Message
+case class Msg2B(rnd: Round, value: CStruct) extends Message
 
 // Message sent by learners to all Agents if something was learned.
 case object Learn extends Message

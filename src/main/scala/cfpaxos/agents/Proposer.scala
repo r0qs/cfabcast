@@ -8,10 +8,6 @@ import cfpaxos.protocol._
 
 trait Proposer {
   this: ProposerActor =>
- 
-  // TODO: isCoordinatorOf(round)
-  val isCollisionFast: Boolean = false
-  val isCoordinator: Boolean = false
 
 //  def propose(value: CStruct) = ???
 //  send Proposal(value, prnd) to some collision-fast proposer
@@ -25,9 +21,9 @@ trait Proposer {
 //    case Event(msg: Request, data: Meta) =>
     // Receive a proposal msg from a client
     case Event(msg: Proposal, data: Meta) =>
-      log.info("Receive a proposal: {}, forward to a cfproposer", msg)
+      log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.id, msg, data)
       // Phase1A
-      if (this.isCoordinator && data.round < msg.rnd) {
+      if (msg.rnd.cid == this.id && data.round.count < msg.rnd.count) {
         data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
         stay() using data.copy(round = msg.rnd, value = Value(None))
       }
@@ -35,7 +31,8 @@ trait Proposer {
 
     // Phase2Prepare
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
-    case Event(msg: Msg2Prepare, data: Meta) if(data.round < msg.rnd) =>
+    case Event(msg: Msg2Prepare, data: Meta) if(data.round.count < msg.rnd.count) =>
+      log.info("Received: {} with data: {}",msg, data)
       val rnd = msg.rnd
       var v = msg.value
       if(v.isBottom)
@@ -44,7 +41,7 @@ trait Proposer {
   }
 }
 
-class ProposerActor extends Actor
+class ProposerActor(val id: Long) extends Actor
   with LoggingFSM[State, Metadata]
   with Proposer
   with SharedBehavior {
@@ -64,4 +61,8 @@ class ProposerActor extends Actor
       }
   }
   initialize()
+}
+
+object ProposerActor {
+  def props(id: Long) : Props = Props(classOf[ProposerActor], id)
 }
