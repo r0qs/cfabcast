@@ -6,21 +6,15 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 import cfpaxos._
-import cfpaxos.agents._
-import cfpaxos.messages._
-import cfpaxos.cstructs._
 
 object Main {
   def main(args: Array[String]): Unit = {
     val port = if (args.isEmpty) "0" else args(0)
     val config = ConfigFactory.parseString(s"akka.remote.netty.tcp.port=$port").
-      withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfpaxos, proposer]")).
+      withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfpaxos, proposer, acceptor]")).
       withFallback(ConfigFactory.load())
     val system = ActorSystem("ClusterSystem", config)
-    val a = system.actorOf(ProposerActor.props(0), "proposer")
-    system.actorOf(Node.props(a, 2), "node")
-    system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), new Value(Some("eita"))))
-    system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), new Value(Some("ola"))))
+    val node = system.actorOf(Node.props(2, Map("proposer" -> 2, "acceptor" -> 1)), "node")
   }
 }
 

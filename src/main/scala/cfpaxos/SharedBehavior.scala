@@ -19,11 +19,11 @@ trait SharedBehavior extends Actor with LoggingFSM[State, Metadata]{
       }
 
       val initialConfig = ClusterConfiguration(p, a, l)
-      if(added.until <= initialConfig.proposers.size) {
+      if(added.until <= initialConfig.acceptors.size) {
         log.info("Discovered the minimum of {} acceptors, starting protocol instance.", added.until)
         goto(Running) using m.copy(config = initialConfig)
       } else {
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", initialConfig.proposers.size, added.until)
+        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", initialConfig.acceptors.size, added.until)
         stay() using m.copy(config = initialConfig)
     }
     //TODO MemberRemoved

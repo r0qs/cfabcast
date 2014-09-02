@@ -41,10 +41,12 @@ trait Proposer {
   }
 }
 
-class ProposerActor(val id: Long) extends Actor
+class ProposerActor extends Actor
   with LoggingFSM[State, Metadata]
   with Proposer
   with SharedBehavior {
+
+  val id = self.hashCode
 
   startWith(Init, Meta.initial)
 
@@ -61,8 +63,4 @@ class ProposerActor(val id: Long) extends Actor
       }
   }
   initialize()
-}
-
-object ProposerActor {
-  def props(id: Long) : Props = Props(classOf[ProposerActor], id)
 }
