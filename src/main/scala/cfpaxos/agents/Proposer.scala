@@ -3,7 +3,6 @@ package cfpaxos.agents
 import akka.actor._
 import cfpaxos._
 import cfpaxos.messages._
-import cfpaxos.cstructs._
 import cfpaxos.protocol._
 
 trait Proposer {
@@ -25,7 +24,7 @@ trait Proposer {
       // Phase1A
       if (msg.rnd.cid == this.id && data.round.count < msg.rnd.count) {
         data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
-        stay() using data.copy(round = msg.rnd, value = Value(None))
+        stay() using data.copy(round = msg.rnd, value = new VMap(None))
       }
       stay()
 
@@ -36,7 +35,7 @@ trait Proposer {
       val rnd = msg.rnd
       var v = msg.value
       if(v.isBottom)
-        stay() using data.copy(round = rnd, value = Value(None))
+        stay() using data.copy(round = rnd, value = new VMap(None))
       stay() using data.copy(round = rnd, value = v)
   }
 }

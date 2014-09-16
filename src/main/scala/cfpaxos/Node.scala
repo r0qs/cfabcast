@@ -14,7 +14,6 @@ import scala.concurrent.ExecutionContext.Implicits.global
 
 import cfpaxos.messages._
 import cfpaxos.agents._
-import cfpaxos.cstructs._
 /*
  * Cluster node
  * This node will handle the request of some client command
@@ -40,8 +39,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), new Value(Some("eita")))) }
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), new Value(Some("ola")))) }
+  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), new VMap(Some("eita")))) }
+  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), new VMap(Some("ola")))) }
 
   // Subscribe to cluster changes, MemberUp
   // TODO: handle more cluster events, like unreacheble
