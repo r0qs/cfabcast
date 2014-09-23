@@ -12,8 +12,8 @@ abstract class Value {
 // TODO Use apply
 class VMap(val value: Option[String]) extends Value {
   type T = Option[String]
-  type U = List[T]
-  val nil = Nil
+  type U = Map[Long, T]
+  val nil = Map.empty[Long, T]
   val bottom = None
   def isBottom = (value == bottom)
 }
