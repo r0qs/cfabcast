@@ -24,7 +24,7 @@ trait Proposer {
       // Phase1A
       if (msg.rnd.cid == this.id && data.round.count < msg.rnd.count) {
         data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
-        stay() using data.copy(round = msg.rnd, value = new VMap(None))
+        stay() using data.copy(round = msg.rnd, value = VMap[Values]())
       }
       stay()
 
@@ -34,8 +34,8 @@ trait Proposer {
       log.info("Received: {} with data: {}",msg, data)
       val rnd = msg.rnd
       var v = msg.value
-      if(v.isBottom)
-        stay() using data.copy(round = rnd, value = new VMap(None))
+      if(v.isEmpty)
+        stay() using data.copy(round = rnd, value = VMap[Values]())
       stay() using data.copy(round = rnd, value = v)
   }
 }

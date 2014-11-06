@@ -4,7 +4,7 @@ import akka.actor.ActorRef
 
 sealed trait ClusterConfiguration {
   def instance: Long
-  // TODO: Use SortedSet
+  // TODO: Use SortedSet and add Round
   def proposers: Set[ActorRef]
   def acceptors: Set[ActorRef]
   def learners: Set[ActorRef]

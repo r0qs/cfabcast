@@ -8,16 +8,17 @@ private[protocol] trait StateMetadata extends Serializable {
   sealed trait Metadata {
     def config: ClusterConfiguration
     val round: Round
-    val value: Value
+    val value: VMap[Values]
   }
 
   case class Meta(
     config: ClusterConfiguration,
     round: Round,
-    value: Value
+    value: VMap[Values]
   )extends Metadata
 
   object Meta {
-    def initial = new Meta(ClusterConfiguration(), Round(0,0, Set()), new VMap(None))
+    //FIXME: hardcode ids
+    def initial = new Meta(ClusterConfiguration(), Round(0,0, Set()), VMap[Values]())
   }
 }

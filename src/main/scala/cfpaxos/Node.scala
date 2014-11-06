@@ -1,6 +1,7 @@
 package cfpaxos
 
-import scala.collection.immutable.{TreeSet, Set}
+import scala.collection.immutable.Set
+import scala.collection.mutable.ListMap
 import akka.cluster.{ Member, Cluster }
 import akka.actor.{ Actor, ActorRef, ActorSystem }
 import akka.actor.{ Address, ActorPath, ActorIdentity, Identify, RootActorPath }
@@ -39,8 +40,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), new VMap(Some("eita")))) }
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), new VMap(Some("ola")))) }
+  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), VMap(0.toLong -> Value(Some("prop0"))))) }
+  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), VMap(1.toLong -> Value(Some("prop1"))))) }
 
   // Subscribe to cluster changes, MemberUp
   // TODO: handle more cluster events, like unreacheble
@@ -82,9 +83,12 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case ActorIdentity(member: Member, None) =>
       log.info("Unable to find any protocol actor on node: {}", member.address)
     
+    // TODO: Improve this
     case Terminated(ref) =>
       log.info("Actor {} terminated", ref)
-      nodes = nodes.filterNot(_ == ref)
+      proposers = proposers.filterNot(_ == ref)
+      acceptors = acceptors.filterNot(_ == ref)
+      learners = learners.filterNot(_ == ref)
   }
 }
 
