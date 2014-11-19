@@ -6,3 +6,7 @@ case class Round(count: Long, cid: Int, cfpids: Set[Long]) extends Ordered[Round
     case n => n.toInt
   }
 }
+
+object Round {
+  def apply() = new Round(0,0, Set())
+}

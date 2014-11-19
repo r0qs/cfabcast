@@ -17,7 +17,6 @@ trait Proposer {
 
 
   val proposerBehavior: StateFunction = {
-//    case Event(msg: Request, data: Meta) =>
     // Receive a proposal msg from a client
     case Event(msg: Proposal, data: Meta) =>
       log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.id, msg, data)
@@ -56,9 +55,9 @@ class ProposerActor extends Actor
   onTransition {
     case Init -> Running =>
       stateData match {
-        case Meta(config, round, value) =>
-          println("Running with "+ config + " " + round + " " + value)
-        case _ => println("OTHER")
+        case Meta(config, round, _ , value) =>
+          println("PROPOSER Running with "+ config + " " + round + " " + value)
+        case _ => println("OTHER PROPOSER MSG")
       }
   }
   initialize()

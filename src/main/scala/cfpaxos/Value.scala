@@ -3,6 +3,7 @@ package cfpaxos
 import collection.mutable._
 import scala.collection.mutable.{Builder, MapBuilder}
 import scala.collection.generic.CanBuildFrom
+import akka.actor.ActorRef
 
 //TODO: Improve this!
 abstract class Values {
@@ -18,6 +19,7 @@ class Value extends Values {
 
 object Value {
   def apply(v: Option[String]) = new Value { override val value = v }
+  def apply() = Nil
 }
 
 object Nil extends Values{
@@ -25,10 +27,10 @@ object Nil extends Values{
   val value: T = None
 }
 
-// Map a Long identifier to a Value
+// Map a ActorRef identifier to a Value
 class VMap[T]
-extends LinkedHashMap[Long, T]
-  with MapLike[Long, T, VMap[T]] {
+extends LinkedHashMap[ActorRef, T]
+  with MapLike[ActorRef, T, VMap[T]] {
 
   // A empty VMap is a bottom one.
   override def empty = new VMap[T]
@@ -39,18 +41,18 @@ extends LinkedHashMap[Long, T]
 object VMap {
   def empty[T] = new VMap[T]
 
-  def apply[T](vmaps: (Long, T)*): VMap[T] = {
+  def apply[T](vmaps: (ActorRef, T)*): VMap[T] = {
     val nvm: VMap[T] = empty
     for (vm <- vmaps) nvm += vm
     nvm
   }
 
-  def newBuilder[T]: Builder[(Long, T), VMap[T]] =
-    new MapBuilder[Long, T, VMap[T]](empty)
+  def newBuilder[T]: Builder[(ActorRef, T), VMap[T]] =
+    new MapBuilder[ActorRef, T, VMap[T]](empty)
 
   implicit def canBuildFrom[T]
-    : CanBuildFrom[VMap[_], (Long, T), VMap[T]] =
-      new CanBuildFrom[VMap[_], (Long, T), VMap[T]] {
+    : CanBuildFrom[VMap[_], (ActorRef, T), VMap[T]] =
+      new CanBuildFrom[VMap[_], (ActorRef, T), VMap[T]] {
         def apply(from: VMap[_]) = newBuilder[T]
         def apply() = newBuilder[T]
       }
