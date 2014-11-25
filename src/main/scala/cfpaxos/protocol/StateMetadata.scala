@@ -6,7 +6,7 @@ import cfpaxos._
 
 private[protocol] trait StateMetadata extends Serializable {
   sealed trait Metadata {
-    def config: ClusterConfiguration
+    val config: ClusterConfiguration
     val round: Round
     val vround: Round
     val value: VMap[Values]

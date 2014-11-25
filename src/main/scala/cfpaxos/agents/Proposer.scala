@@ -8,20 +8,15 @@ import cfpaxos.protocol._
 trait Proposer {
   this: ProposerActor =>
 
-//  def propose(value: CStruct) = ???
+//  def propose(value: VMaps[Values]) = ???
 //  send Proposal(value, prnd) to some collision-fast proposer
-
-// TODO  
-//  def phase2A = ???
-//  def phase2Prepare = ???
-
 
   val proposerBehavior: StateFunction = {
     // Receive a proposal msg from a client
     case Event(msg: Proposal, data: Meta) =>
       log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.id, msg, data)
       // Phase1A
-      if (msg.rnd.cid == this.id && data.round.count < msg.rnd.count) {
+      if (msg.rnd.coordinator.hashCode == this.id && data.round < msg.rnd) {
         data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
         stay() using data.copy(round = msg.rnd, value = VMap[Values]())
       }
@@ -29,7 +24,7 @@ trait Proposer {
 
     // Phase2Prepare
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
-    case Event(msg: Msg2Prepare, data: Meta) if(data.round.count < msg.rnd.count) =>
+    case Event(msg: Msg2Prepare, data: Meta) if(data.round < msg.rnd) =>
       log.info("Received: {} with data: {}",msg, data)
       val rnd = msg.rnd
       var v = msg.value

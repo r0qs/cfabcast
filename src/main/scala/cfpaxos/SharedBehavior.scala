@@ -17,8 +17,8 @@ trait SharedBehavior extends Actor with LoggingFSM[State, Metadata]{
         case "acceptor" => a += added.ref
         case "learner"  => l += added.ref
       }
-
-      val initialConfig = ClusterConfiguration(p, p, p, a, l)
+      //FIXME Get coordinator, cfproposers and quorum from configuration
+      val initialConfig = ClusterConfiguration(p, p, p, a, l, a)
       if(added.until <= initialConfig.acceptors.size) {
         log.info("Discovered the minimum of {} acceptors, starting protocol instance.", added.until)
         goto(Running) using m.copy(config = initialConfig)

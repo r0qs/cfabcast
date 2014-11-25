@@ -39,8 +39,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,0,Set(0)), VMap(a -> Value(Some("prop0"))))) }
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,0,Set(0)), VMap(a -> Value(Some("prop1"))))) }
+  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,Set(),Set()), VMap(a -> Value(Some("prop0"))))) }
+  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,Set(),Set()), VMap(a -> Value(Some("prop1"))))) }
 
   // Subscribe to cluster changes, MemberUp
   // TODO: handle more cluster events, like unreacheble
