@@ -4,9 +4,10 @@ import collection.mutable._
 import scala.collection.mutable.{Builder, MapBuilder}
 import scala.collection.generic.CanBuildFrom
 import akka.actor.ActorRef
+import java.io._
 
 //TODO: Improve this!
-abstract class Values {
+abstract class Values extends Serializable {
   type T
   val value: T
   override def toString: String = value.toString 

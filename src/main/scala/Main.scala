@@ -6,6 +6,7 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 import cfpaxos._
+import cfpaxos.messages._
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -15,6 +16,7 @@ object Main {
       withFallback(ConfigFactory.load())
     val system = ActorSystem("ClusterSystem", config)
     val node = system.actorOf(Node.props(2, Map("proposer" -> 1, "acceptor" -> 1)), "node")
+    node ! StartConsole
   }
 }
 

@@ -13,24 +13,27 @@ trait Proposer {
 
   val proposerBehavior: StateFunction = {
     // Receive a proposal msg from a client
-    case Event(msg: Proposal, data: Meta) =>
-      log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.id, msg, data)
+    case Event(msg: Proposal, data: ProposerMeta) =>
+      log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.hashCode, msg, data)
       // Phase1A
-      if (msg.rnd.coordinator.hashCode == this.id && data.round < msg.rnd) {
+      if (msg.rnd.coordinator.hashCode == this.hashCode && data.prnd < msg.rnd) {
         data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
-        stay() using data.copy(round = msg.rnd, value = VMap[Values]())
+        stay() using data.copy(prnd = msg.rnd, pval = VMap[Values]())
       }
       stay()
 
     // Phase2Prepare
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
-    case Event(msg: Msg2Prepare, data: Meta) if(data.round < msg.rnd) =>
+    case Event(msg: Msg2Prepare, data: ProposerMeta) if(data.prnd < msg.rnd) =>
       log.info("Received: {} with data: {}",msg, data)
       val rnd = msg.rnd
       var v = msg.value
       if(v.isEmpty)
-        stay() using data.copy(round = rnd, value = VMap[Values]())
-      stay() using data.copy(round = rnd, value = v)
+        stay() using data.copy(prnd = rnd, pval = VMap[Values]())
+      stay() using data.copy(prnd = rnd, pval = v)
+
+    case Event(_, data: Meta) =>
+      stay() using data.forProposer
   }
 }
 
@@ -39,21 +42,11 @@ class ProposerActor extends Actor
   with Proposer
   with SharedBehavior {
 
-  val id = self.hashCode
-
   startWith(Init, Meta.initial)
 
   when(Init) (sharedBehavior)
 
   when(Running) (sharedBehavior orElse proposerBehavior)
 
-  onTransition {
-    case Init -> Running =>
-      stateData match {
-        case Meta(config, round, _ , value) =>
-          println("PROPOSER Running with "+ config + " " + round + " " + value)
-        case _ => println("OTHER PROPOSER MSG")
-      }
-  }
   initialize()
 }

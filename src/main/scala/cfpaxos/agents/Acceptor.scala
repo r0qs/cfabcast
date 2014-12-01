@@ -8,22 +8,22 @@ import cfpaxos.protocol._
 trait Acceptor {
   this: AcceptorActor =>
 
-  def phase2b(msg: Message, data: Meta): PartialFunction[Message, State] = {
+  def phase2b(msg: Message, data: AcceptorMeta): PartialFunction[Message, State] = {
     case msg: Msg2Start =>
-      data.config.learners foreach (_ ! Msg2B(data.round, data.value))
-      stay() using data.copy(round = msg.rnd, vround = msg.rnd, value = msg.value)
+      data.config.learners foreach (_ ! Msg2B(data.rnd, data.vval))
+      stay() using data.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value)
 
     case msg: Msg2A => 
       var value = VMap[Values]()
-      if (data.vround < msg.rnd || data.value(self) == Nil) {
+      if (data.vrnd < msg.rnd || data.vval(self) == Nil) {
         // extends value and put Nil for all proposers
         value = VMap(sender -> msg.value(sender))
         for (p <- (data.config.proposers diff data.config.cfproposers)) value += (p -> Nil)
       }
       else
         value ++: VMap(sender -> msg.value)
-      data.config.learners foreach (_ ! Msg2B(data.round, data.value))
-      stay() using data.copy(round = msg.rnd, vround = msg.rnd, value = value)
+      data.config.learners foreach (_ ! Msg2B(data.rnd, data.vval))
+      stay() using data.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = value)
 
   }  
   
@@ -31,26 +31,29 @@ trait Acceptor {
     // Execute phase 1B
     // For this instance and round the sender need to be a coordinator
     // Make this verification for all possible instances
-    case Event(msg: Msg1A, data: Meta) =>
-      if (data.round < msg.rnd && (data.config.coordinator contains sender)) {
-        sender ! Msg1B(msg.rnd, data.vround, data.value) 
-        stay() using data.copy(round = msg.rnd)
+    case Event(msg: Msg1A, data: AcceptorMeta) =>
+      if (data.rnd < msg.rnd && (data.config.coordinator contains sender)) {
+        sender ! Msg1B(msg.rnd, data.vrnd, data.vval)
+        stay() using data.copy(rnd = msg.rnd)
       }
       stay()
 
     // Execute phase 2B
-    case Event(msg: Msg2Start, data: Meta) if (data.round <= msg.rnd) => 
+    case Event(msg: Msg2Start, data: AcceptorMeta) if (data.rnd <= msg.rnd) =>
       // Cond1
-      if ((!msg.value.isEmpty && data.vround < msg.rnd) || data.value(self) == Nil)
+      if ((!msg.value.isEmpty && data.vrnd < msg.rnd) || data.vval(self) == Nil)
         phase2b(msg, data)
       stay()
     
     // FIXME: data.value(sender) != Nil -> how to unique identify actors? using actorref?
-    case Event(msg: Msg2A, data: Meta) if (data.round <= msg.rnd) =>
+    case Event(msg: Msg2A, data: AcceptorMeta) if (data.rnd <= msg.rnd) =>
       // Cond2
-      if (!data.value.isEmpty)
+      if (!data.vval.isEmpty)
         phase2b(msg, data)
       stay()
+
+    case Event(_, data: Meta) =>
+      stay() using data.forAcceptor
   }
       
 }
@@ -66,13 +69,5 @@ class AcceptorActor extends Actor
 
   when(Running) (sharedBehavior orElse acceptorBehavior)
 
-  onTransition {
-    case Init -> Running =>
-      stateData match {
-        case Meta(config, round, vround , value) =>
-          println("ACCEPTOR Running with "+ config + " " + round + " " + vround + " " + value)
-        case _ => println("OTHER ACCEPTOR MSG")
-      }
-  }
   initialize()
 }

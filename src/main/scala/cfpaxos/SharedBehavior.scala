@@ -7,24 +7,13 @@ import protocol._
 
 trait SharedBehavior extends Actor with LoggingFSM[State, Metadata]{
   val sharedBehavior: StateFunction = {
-    case Event(added: MemberAdded, m: Meta) =>
-      // FIXME: use val instead of var
-      var p = m.config.proposers
-      var a = m.config.acceptors
-      var l = m.config.learners
-      added.member.roles collect {
-        case "proposer" => p += added.ref
-        case "acceptor" => a += added.ref
-        case "learner"  => l += added.ref
-      }
-      //FIXME Get coordinator, cfproposers and quorum from configuration
-      val initialConfig = ClusterConfiguration(p, p, p, a, l, a)
-      if(added.until <= initialConfig.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", added.until)
-        goto(Running) using m.copy(config = initialConfig)
+    case Event(msg: UpdateConfig, m: Meta) =>
+      if(msg.until <= msg.config.acceptors.size) {
+        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", msg.until)
+        goto(Running) using m.copy(config = msg.config)
       } else {
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", initialConfig.acceptors.size, added.until)
-        stay() using m.copy(config = initialConfig)
+        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", msg.config.acceptors.size, msg.until)
+        stay() using m.copy(config = msg.config)
     }
     //TODO MemberRemoved
   } 

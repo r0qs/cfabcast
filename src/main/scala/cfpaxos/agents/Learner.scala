@@ -9,19 +9,18 @@ trait Learner {
   this: LearnerActor =>
 
   def learnerBehavior: StateFunction = {
-    case Event(msg: Msg2B, data: Meta) =>
-      if (data.config.quorum.isEmpty) {
-        learned ++: msg.value
-        stay() using data.copy(round = msg.rnd, value = msg.value)
+    case Event(msg: Msg2B, data @ LearnerMeta(_, _, quorum)) =>
+      if (data.quorum.isEmpty) {
+        stay() using data.copy(quorum = quorum + sender)
       }
       // TODO: Speculative execution
-/*      if (data.config.quorum contains sender) {
-        var nquorum = data.config.quorum - sender
-        var nconfig = data.config
-        nconfig.quorum = nquorum
-        stay() using data.copy(config = nconfig)
-      }*/
+      if (data.quorum.size > data.config.quorumSize) {
+        stay() using data.copy(learned = msg.value)
+      }
       stay()
+
+    case Event(_, data: Meta) =>
+      stay() using data.forLearner
   }
 }
 
@@ -30,21 +29,11 @@ class LearnerActor extends Actor
   with Learner
   with SharedBehavior {
 
-  val learned: VMap[Values] = VMap()
-
   startWith(Init, Meta.initial)
 
   when(Init) (sharedBehavior)
 
   when(Running) (sharedBehavior orElse learnerBehavior)
 
-  onTransition {
-    case Init -> Running =>
-      stateData match {
-        case Meta(config, round, vround , value) =>
-          println("LEARNER Running with "+ config + " " + round + " " + value)
-        case _ => println("OTHER LEARNER MSG")
-      }
-  }
   initialize()
 }

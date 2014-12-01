@@ -39,9 +39,6 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(10.seconds, a, Proposal(new Round(0,Set(),Set()), VMap(a -> Value(Some("prop0"))))) }
-  for (a <- proposers) { context.system.scheduler.scheduleOnce(15.seconds, a, Msg2Prepare(new Round(1,Set(),Set()), VMap(a -> Value(Some("prop1"))))) }
-
   // Subscribe to cluster changes, MemberUp
   // TODO: handle more cluster events, like unreacheble
   override def preStart(): Unit = {
@@ -56,6 +53,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
 
+  val console = context.actorOf(Props[ConsoleClient], "console")
+
   def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "node*"
 
   def register(member: Member): Unit = {
@@ -65,29 +64,48 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  def receive = {
+  def receive = configuration(ClusterConfiguration(proposers, Set(), Set(), acceptors, learners))
+
+  def configuration(config: ClusterConfiguration): Receive = {
+    //FIXME get leader not head
+    case StartConsole => console ! StartConsole
+    case Command(cmd) =>
+      val leader = config.proposers.minBy(_.hashCode)
+      println("MIN: "+ leader.hashCode)
+      println("MY CONFIG: " + config)
+      leader ! Proposal(new Round(0,Set(leader),config.proposers), VMap(leader -> Value(Some(cmd))))
+
     case state: CurrentClusterState =>
       log.info("Current members: {}", state.members)
+
     case MemberUp(member) if !(nodes.contains(member.address)) => register(member)
     
     case ActorIdentity(member: Member, Some(ref)) => {
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
-      log.info("Adding actor {} to cluster from address: {} and roles {}", ref, member.address, member.roles)
-      for (p <- proposers if !proposers.isEmpty) { p ! MemberAdded(ref, member, waitFor) }
-      for (a <- acceptors if !acceptors.isEmpty) { a ! MemberAdded(ref, member, waitFor) }
-      for (l <- learners if !learners.isEmpty) { l ! MemberAdded(ref, member, waitFor) }
+      ref ! GiveMeAgents
     }
 
     case ActorIdentity(member: Member, None) =>
       log.info("Unable to find any protocol actor on node: {}", member.address)
     
+    case GiveMeAgents =>
+      sender ! GetAgents(config)
+
+    case GetAgents(newConfig: ClusterConfiguration) => {
+      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(config + newConfig, waitFor) }
+      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(config + newConfig, waitFor) }
+      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig(config + newConfig, waitFor) }
+      context.become(configuration(config + newConfig))
+    }
+
     // TODO: Improve this
     case Terminated(ref) =>
       log.info("Actor {} terminated", ref)
+      /* FIXME:
       proposers = proposers.filterNot(_ == ref)
       acceptors = acceptors.filterNot(_ == ref)
-      learners = learners.filterNot(_ == ref)
+      learners = learners.filterNot(_ == ref)*/
   }
 }
 
