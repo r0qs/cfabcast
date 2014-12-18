@@ -7,6 +7,8 @@ case class Round(count: Long, coordinator: Set[ActorRef], cfproposers: Set[Actor
     case 0 if (!coordinator.isEmpty) => (this.coordinator.head.hashCode - that.coordinator.head.hashCode)
     case n => n.toInt
   }
+
+  def ++(): Round = Round(count + 1, coordinator, cfproposers)
 }
 
 object Round {

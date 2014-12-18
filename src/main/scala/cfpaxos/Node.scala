@@ -15,7 +15,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import cfpaxos.messages._
 import cfpaxos.agents._
 /*
- * Cluster node
+   * Cluster node
  * This node will handle the request of some client command
  */
 class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorLogging {
@@ -64,16 +64,17 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  def receive = configuration(ClusterConfiguration(proposers, Set(), Set(), acceptors, learners))
+  def receive = configuration(ClusterConfiguration(proposers, acceptors, learners))
 
   def configuration(config: ClusterConfiguration): Receive = {
     //FIXME get leader not head
     case StartConsole => console ! StartConsole
     case Command(cmd) =>
-      val leader = config.proposers.minBy(_.hashCode)
-      println("MIN: "+ leader.hashCode)
-      println("MY CONFIG: " + config)
-      leader ! Proposal(new Round(0,Set(leader),config.proposers), VMap(leader -> Value(Some(cmd))))
+      println("Command " + cmd + " received!")
+      //val leader = config.proposers.minBy(_.hashCode)
+      //println("MIN: "+ leader.hashCode)
+      //println("MY CONFIG: " + config)
+      //leader ! Proposal(new Round(0,Set(leader),config.proposers), VMap(leader -> Value(Some(cmd))))
 
     case state: CurrentClusterState =>
       log.info("Current members: {}", state.members)
@@ -93,9 +94,9 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       sender ! GetAgents(config)
 
     case GetAgents(newConfig: ClusterConfiguration) => {
-      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(config + newConfig, waitFor) }
-      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(config + newConfig, waitFor) }
-      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig(config + newConfig, waitFor) }
+      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig("proposer", config + newConfig, waitFor) }
+      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig("acceptor", config + newConfig, waitFor) }
+      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig("learner", config + newConfig, waitFor) }
       context.become(configuration(config + newConfig))
     }
 

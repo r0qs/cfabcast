@@ -19,8 +19,8 @@ trait Learner {
       }
       stay()
 
-    case Event(_, data: Meta) =>
-      stay() using data.forLearner
+//    case Event(_, data: Meta) =>
+//      stay() using data.forLearner
   }
 }
 
@@ -33,7 +33,7 @@ class LearnerActor extends Actor
 
   when(Init) (sharedBehavior)
 
-  when(Running) (sharedBehavior orElse learnerBehavior)
+  when(Phase1) (sharedBehavior orElse learnerBehavior)
 
   initialize()
 }

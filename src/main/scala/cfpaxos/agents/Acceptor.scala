@@ -18,7 +18,7 @@ trait Acceptor {
       if (data.vrnd < msg.rnd || data.vval(self) == Nil) {
         // extends value and put Nil for all proposers
         value = VMap(sender -> msg.value(sender))
-        for (p <- (data.config.proposers diff data.config.cfproposers)) value += (p -> Nil)
+        for (p <- (data.config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
       }
       else
         value ++: VMap(sender -> msg.value)
@@ -32,7 +32,8 @@ trait Acceptor {
     // For this instance and round the sender need to be a coordinator
     // Make this verification for all possible instances
     case Event(msg: Msg1A, data: AcceptorMeta) =>
-      if (data.rnd < msg.rnd && (data.config.coordinator contains sender)) {
+      log.info("Received MSG1A from {}", sender)
+      if (data.rnd < msg.rnd && (msg.rnd.coordinator contains sender)) {
         sender ! Msg1B(msg.rnd, data.vrnd, data.vval)
         stay() using data.copy(rnd = msg.rnd)
       }
@@ -52,8 +53,6 @@ trait Acceptor {
         phase2b(msg, data)
       stay()
 
-    case Event(_, data: Meta) =>
-      stay() using data.forAcceptor
   }
       
 }
@@ -67,7 +66,13 @@ class AcceptorActor extends Actor
 
   when(Init) (sharedBehavior)
 
-  when(Running) (sharedBehavior orElse acceptorBehavior)
+  when(Phase1) (sharedBehavior orElse acceptorBehavior)
+  
+  whenUnhandled {
+    case Event(e, s) =>
+      println("RECEIVED UNHANDLED REQUEST "+e+" in "+stateName+"/"+s)
+      stay()
+  }
 
   initialize()
 }

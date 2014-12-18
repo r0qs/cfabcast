@@ -8,19 +8,27 @@ import cfpaxos.protocol._
 trait Proposer {
   this: ProposerActor =>
 
-//  def propose(value: VMaps[Values]) = ???
-//  send Proposal(value, prnd) to some collision-fast proposer
+  def isCoordinatorOf(round: Round): Boolean = (coordinator &~ round.coordinator).isEmpty
 
   val proposerBehavior: StateFunction = {
+    // Phase1a 
+    case Event(msg: Proposal, data: ProposerMeta) if (isCoordinatorOf(msg.rnd) && data.crnd < msg.rnd) =>
+      log.info("Starting phase1a in round {} by {}", msg.rnd, leader)
+      data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
+      stay() using data.copy(crnd = msg.rnd, cval = VMap[Values]())
+
     // Receive a proposal msg from a client
     case Event(msg: Proposal, data: ProposerMeta) =>
       log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.hashCode, msg, data)
-      // Phase1A
-      if (msg.rnd.coordinator.hashCode == this.hashCode && data.prnd < msg.rnd) {
-        data.config.acceptors.foreach(_ ! Msg1A(msg.rnd))
-        stay() using data.copy(prnd = msg.rnd, pval = VMap[Values]())
-      }
       stay()
+
+    // TODO verify quorum
+    case Event(msg: Msg1B, data: ProposerMeta) if (isCoordinatorOf(msg.rnd) && 
+                                                   data.crnd == msg.rnd && 
+                                                   data.cval == VMap[Values]()) =>
+      log.info("Received MSG1B from {}", sender)
+      stay()
+      
 
     // Phase2Prepare
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
@@ -31,9 +39,6 @@ trait Proposer {
       if(v.isEmpty)
         stay() using data.copy(prnd = rnd, pval = VMap[Values]())
       stay() using data.copy(prnd = rnd, pval = v)
-
-    case Event(_, data: Meta) =>
-      stay() using data.forProposer
   }
 }
 
@@ -46,7 +51,15 @@ class ProposerActor extends Actor
 
   when(Init) (sharedBehavior)
 
-  when(Running) (sharedBehavior orElse proposerBehavior)
+  when(Phase1) (sharedBehavior orElse proposerBehavior)
+  
+  when(Phase2) (sharedBehavior orElse proposerBehavior)
+
+  whenUnhandled {
+    case Event(e, s) =>
+      println("RECEIVED UNHANDLED REQUEST "+e+" in "+stateName+"/"+s)
+      stay()
+  }
 
   initialize()
 }

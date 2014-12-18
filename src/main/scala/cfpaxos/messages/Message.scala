@@ -33,10 +33,12 @@ case class Msg2B(rnd: Round, value: VMap[Values]) extends Message
 // Message sent by learners to all Agents if something was learned.
 case object Learn extends Message
 
+case object StartRound extends Message
+
 /*
  * Cluster Messages
  */
-case class UpdateConfig(config: ClusterConfiguration, until: Int) extends Message
+case class UpdateConfig(agentType: String, config: ClusterConfiguration, until: Int) extends Message
 case class GetAgents(config: ClusterConfiguration) extends Message
 case object GiveMeAgents extends Message
 

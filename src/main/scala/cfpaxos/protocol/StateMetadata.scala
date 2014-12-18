@@ -5,17 +5,19 @@ import akka.actor.ActorRef
 import cfpaxos._
 
 private[protocol] trait StateMetadata extends Serializable {
-  sealed trait Metadata {
+  abstract class Metadata {
     val config: ClusterConfiguration
+    //val current_rnd: Round
+    //val current_value: VMap[Values]
   }
 
   case class Meta(
     config: ClusterConfiguration
   )extends Metadata {
 
-    def forProposer: ProposerMeta = ProposerMeta(config, Round(), VMap[Values]())
-    def forAcceptor: AcceptorMeta = AcceptorMeta(config, Round(), Round(), VMap[Values]())
-    def forLearner: LearnerMeta   = LearnerMeta (config, VMap[Values](), Set())
+    def forProposer(config: ClusterConfiguration): ProposerMeta = ProposerMeta(config, Round(), VMap[Values](), Round(), VMap[Values]())
+    def forAcceptor(config: ClusterConfiguration): AcceptorMeta = AcceptorMeta(config, Round(), Round(), VMap[Values]())
+    def forLearner(config: ClusterConfiguration): LearnerMeta   = LearnerMeta (config, VMap[Values](), Set())
   }
 
   object Meta {
@@ -25,7 +27,9 @@ private[protocol] trait StateMetadata extends Serializable {
   case class ProposerMeta(
     config: ClusterConfiguration,
     prnd: Round,
-    pval: VMap[Values]
+    pval: VMap[Values],
+    crnd: Round,
+    cval: VMap[Values]
   )extends Metadata
 
   case class AcceptorMeta(
