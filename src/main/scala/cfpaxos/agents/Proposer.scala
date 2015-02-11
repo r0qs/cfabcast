@@ -8,7 +8,18 @@ import cfpaxos.protocol._
 trait Proposer {
   this: ProposerActor =>
 
-  def isCoordinatorOf(round: Round): Boolean = (coordinator &~ round.coordinator).isEmpty
+  def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
+  
+  def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
+ 
+  def phase2a(msg: Message, data: ProposerMeta): PartialFunction[Message, State] = {
+//    if (msg.value(self) != Nil)
+      //send 2a to A union CF
+      //else send 2a to L
+    case msg: Proposal => 
+      goto(Phase2) using data.copy(pval = msg.value)
+    stay()
+  }
 
   val proposerBehavior: StateFunction = {
     // Phase1a 
@@ -19,9 +30,24 @@ trait Proposer {
 
     // Receive a proposal msg from a client
     case Event(msg: Proposal, data: ProposerMeta) =>
-      log.info("ID: {} - Receive a proposal: {}, forward to a cfproposer, my data {}", this.hashCode, msg, data)
+      if ((isCFProposerOf(msg.rnd) && 
+           data.prnd == msg.rnd && 
+           data.pval == VMap[Values]()) &&
+          msg.value(self) != Nil)
+        phase2a(msg, data)
+      else {
+        log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}", this.hashCode, msg, msg.rnd.cfproposers)
+        msg.rnd.cfproposers.foreach(_ ! msg)
+      }
       stay()
 
+    case Event(msg: Msg2A, data: ProposerMeta) if (isCFProposerOf(msg.rnd) && 
+                                                   data.prnd == msg.rnd && 
+                                                   data.pval == VMap[Values]())=> 
+      if (msg.value(self) == Nil)
+        phase2a(msg, data)
+      stay()
+      
     // TODO verify quorum
     case Event(msg: Msg1B, data: ProposerMeta) if (isCoordinatorOf(msg.rnd) && 
                                                    data.crnd == msg.rnd && 
