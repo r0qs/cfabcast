@@ -7,20 +7,13 @@ import cfpaxos.protocol._
 
 trait Proposer {
   this: ProposerActor =>
+  
+  var qcounter: Int = 0
 
   def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
   
   def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
  
-  def phase2a(msg: Message, data: ProposerMeta): PartialFunction[Message, State] = {
-//    if (msg.value(self) != Nil)
-      //send 2a to A union CF
-      //else send 2a to L
-    case msg: Proposal => 
-      goto(Phase2) using data.copy(pval = msg.value)
-    stay()
-  }
-
   val proposerBehavior: StateFunction = {
     // Phase1a 
     case Event(msg: Proposal, data: ProposerMeta) if (isCoordinatorOf(msg.rnd) && data.crnd < msg.rnd) =>
@@ -33,10 +26,13 @@ trait Proposer {
       if ((isCFProposerOf(msg.rnd) && 
            data.prnd == msg.rnd && 
            data.pval == VMap[Values]()) &&
-          msg.value(self) != Nil)
-        phase2a(msg, data)
+          msg.value(self) != Nil) {
+        (msg.rnd.cfproposers union data.config.acceptors).foreach(_ ! Msg2A(msg.rnd, msg.value)) 
+        goto(Phase2) using data.copy(pval = msg.value)
+      }
       else {
         log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}", this.hashCode, msg, msg.rnd.cfproposers)
+        //TODO select a random cfp
         msg.rnd.cfproposers.foreach(_ ! msg)
       }
       stay()
@@ -44,15 +40,19 @@ trait Proposer {
     case Event(msg: Msg2A, data: ProposerMeta) if (isCFProposerOf(msg.rnd) && 
                                                    data.prnd == msg.rnd && 
                                                    data.pval == VMap[Values]())=> 
-      if (msg.value(self) == Nil)
-        phase2a(msg, data)
+      if (msg.value(self) == Nil) {
+        (data.config.learners).foreach(_ ! Msg2A(msg.rnd, msg.value))
+        goto(Phase2) using data.copy(pval = msg.value)
+      }
       stay()
       
     // TODO verify quorum
+    // Phase2Start
     case Event(msg: Msg1B, data: ProposerMeta) if (isCoordinatorOf(msg.rnd) && 
                                                    data.crnd == msg.rnd && 
                                                    data.cval == VMap[Values]()) =>
       log.info("Received MSG1B from {}", sender)
+      // save sender actorref for this round
       stay()
       
 

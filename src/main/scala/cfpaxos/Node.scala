@@ -25,6 +25,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   var acceptors = Set.empty[ActorRef]
   var learners  = Set.empty[ActorRef]
 
+  // Creates actors on this node
   for ((t, a) <- nodeAgents) {
     t match {
       case "proposer" => for (b <- 1 to a) { 
@@ -67,7 +68,6 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   def receive = configuration(ClusterConfiguration(proposers, acceptors, learners))
 
   def configuration(config: ClusterConfiguration): Receive = {
-    //FIXME get leader not head
     case StartConsole => console ! StartConsole
     case Command(cmd) =>
       println("Command " + cmd + " received!")

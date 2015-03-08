@@ -28,7 +28,7 @@ trait Acceptor {
   }  
   
   val acceptorBehavior: StateFunction = {
-    // Execute phase 1B
+    // Phase1B
     // For this instance and round the sender need to be a coordinator
     // Make this verification for all possible instances
     case Event(msg: Msg1A, data: AcceptorMeta) =>
@@ -39,7 +39,7 @@ trait Acceptor {
       }
       stay()
 
-    // Execute phase 2B
+    // Phase2B
     case Event(msg: Msg2Start, data: AcceptorMeta) if (data.rnd <= msg.rnd) =>
       // Cond1
       if ((!msg.value.isEmpty && data.vrnd < msg.rnd) || data.vval(self) == Nil)

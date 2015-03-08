@@ -17,6 +17,7 @@ trait SharedBehavior extends Actor with LoggingFSM[State, Metadata]{
     case Event(msg: UpdateConfig, m: Meta) =>
       if(msg.until <= msg.config.acceptors.size) {
         log.info("Discovered the minimum of {} acceptors, starting protocol instance.", msg.until)
+        //TODO: make leader election here
         println("MY STATE IS: "+ stateName)
         msg.agentType match {
           case "proposer" => goto(Phase1) using m.forProposer(msg.config)
