@@ -25,15 +25,15 @@ trait Learner {
 }
 
 class LearnerActor extends Actor
-  with LoggingFSM[State, Metadata]
+  with LoggingFSM[State, DistributedMeta]
   with Learner
   with SharedBehavior {
 
-  startWith(Init, Meta.initial)
+  startWith(Waiting, MetaDist.initial)
 
-  when(Init) (sharedBehavior)
+  when(Waiting) (sharedBehavior)
 
-  when(Phase1) (sharedBehavior orElse learnerBehavior)
+  when(Active) (sharedBehavior orElse learnerBehavior)
 
   initialize()
 }

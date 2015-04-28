@@ -62,11 +62,11 @@ class AcceptorActor extends Actor
   with Acceptor
   with SharedBehavior {
 
-  startWith(Init, Meta.initial)
+  startWith(Waiting, Meta.initial)
 
-  when(Init) (sharedBehavior)
+  when(Waiting) (sharedBehavior)
 
-  when(Phase1) (sharedBehavior orElse acceptorBehavior)
+  when(Active) (sharedBehavior orElse acceptorBehavior)
   
   whenUnhandled {
     case Event(e, s) =>

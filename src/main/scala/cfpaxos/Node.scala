@@ -31,12 +31,12 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       case "proposer" => for (b <- 1 to a) { 
         proposers += context.actorOf((Props[ProposerActor]), name=s"proposer-$b") 
       }
-      case "acceptor" => for (b <- 1 to a) {
+   /*   case "acceptor" => for (b <- 1 to a) {
         acceptors += context.actorOf((Props[AcceptorActor]), name=s"acceptor-$b") 
       }
       case "learner"  => for (b <- 1 to a) {
         learners  += context.actorOf((Props[LearnerActor]), name=s"learner-$b")
-      }
+      }*/
     }
   }
 

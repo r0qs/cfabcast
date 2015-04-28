@@ -44,4 +44,22 @@ private[protocol] trait StateMetadata extends Serializable {
     learned: VMap[Values],
     quorum: Set[ActorRef]
   )extends Metadata
+
+  abstract class DistributedMeta {
+    val config: ClusterConfiguration
+    val data: Metadata
+    val actors: Set[ActorRef]
+  }
+
+  case class DistributedState(
+    config: ClusterConfiguration,
+    data: Metadata,
+    actors: Set[ActorRef]
+  )extends DistributedMeta
+
+  object MetaDist {
+    def proposer = new DistributedState(ClusterConfiguration(), ProposerMeta(ClusterConfiguration(), Round(), VMap[Values](), Round(), VMap[Values]()), Set())
+    def acceptor = new DistributedState(ClusterConfiguration(), AcceptorMeta(ClusterConfiguration(), Round(), Round(), VMap[Values]()), Set())
+    def learner = new DistributedState(ClusterConfiguration(), LearnerMeta (ClusterConfiguration(), VMap[Values](), Set()), Set())
+  }
 }

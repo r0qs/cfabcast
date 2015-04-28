@@ -7,42 +7,29 @@ import protocol._
 
 import scala.util.Random
 
-trait SharedBehavior extends Actor with LoggingFSM[State, Metadata]{
+trait SharedBehavior extends Actor with LoggingFSM[State, DistributedMeta]{
 
   var leader: ActorRef = self
   var coordinator: Set[ActorRef] = Set[ActorRef]()
 
   val sharedBehavior: StateFunction = {
     // Add nodes on init phase
-    case Event(msg: UpdateConfig, m: Meta) =>
-      if(msg.until <= msg.config.acceptors.size) {
+    case Event(msg: UpdateConfig, m: DistributedState) =>
+      if(msg.until <= msg.config.proposers.size) {
         log.info("Discovered the minimum of {} acceptors, starting protocol instance.", msg.until)
         //TODO: make leader election here
         println("MY STATE IS: "+ stateName)
-        msg.agentType match {
-          case "proposer" => goto(Phase1) using m.forProposer(msg.config)
-          case "acceptor" => goto(Phase1) using m.forAcceptor(msg.config)
-          case "learner" => goto(Phase1) using m.forLearner(msg.config)
-        }
+        goto(Active) using m.copy(config = msg.config)
       } else {
         log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", msg.config.acceptors.size, msg.until)
         stay() using m.copy(config = msg.config)
     }
-    // Add nodes on others phases
-    case Event(msg: UpdateConfig, m) =>
-      log.info("Add node on state {}", stateName)
-      m match {
-        case ProposerMeta(_, prnd, pval, crnd, cval) =>  stay() using ProposerMeta(msg.config, prnd, pval, crnd, cval)
-        case AcceptorMeta(_, rnd, vrnd, vval) =>  stay() using AcceptorMeta(msg.config, rnd, vrnd, vval)
-        case LearnerMeta(_, learned, quorum) => stay() using LearnerMeta(msg.config, learned, quorum)
-      }
-      stay()
     //TODO MemberRemoved
   }
 
   onTransition {
     // Start a new round
-    case Init -> Phase1 =>
+    case Waiting -> Active =>
       // TODO: Make leader election
       leader = nextStateData.config.proposers.minBy(_.hashCode)
       coordinator += leader
@@ -50,9 +37,12 @@ trait SharedBehavior extends Actor with LoggingFSM[State, Metadata]{
       if(leader == self) {
         println("Iam a LEADER! My id is: " + self.hashCode)
         nextStateData match { 
-          case m: ProposerMeta => 
+          case m: DistributedState =>
             val cfp = Set(m.config.proposers.toVector(Random.nextInt(m.config.proposers.size)))
-            self ! Proposal(Round(m.crnd.count + 1, m.crnd.coordinator + self, cfp) , m.cval)
+            m.data match {
+              case data: ProposerMeta =>
+                self ! Proposal(Round(data.crnd.count + 1, data.crnd.coordinator + self, cfp) , data.cval)
+            }
         }
       }
       else
