@@ -4,7 +4,7 @@ import akka.actor.ActorRef
 import cfpaxos._
 
 sealed trait ClusterConfiguration {
-  val instance: Long
+  val instance: Int
   val round: Round
   val quorumSize: Int
   // TODO: Use SortedSet and add Round
@@ -28,4 +28,4 @@ object ClusterConfiguration {
     SimpleClusterConfiguration(0, Round(), 0, Set(), Set(), Set())
 }
 
-case class SimpleClusterConfiguration(instance: Long, round: Round, quorumSize: Int, proposers: Set[ActorRef], acceptors: Set[ActorRef], learners: Set[ActorRef]) extends ClusterConfiguration
+case class SimpleClusterConfiguration(instance: Int, round: Round, quorumSize: Int, proposers: Set[ActorRef], acceptors: Set[ActorRef], learners: Set[ActorRef]) extends ClusterConfiguration

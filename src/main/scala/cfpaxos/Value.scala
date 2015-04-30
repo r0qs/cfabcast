@@ -18,6 +18,8 @@ class Value extends Values {
   val value: T = None
 }
 
+// none = VMap[Values]()
+
 object Value {
   def apply(v: Option[String]) = new Value { override val value = v }
   def apply() = Nil

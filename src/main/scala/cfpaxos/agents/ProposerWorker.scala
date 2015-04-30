@@ -17,8 +17,8 @@ trait ProposerWorker {
   val proposerBehavior: StateFunction = {
     // Phase1a 
     case Event(msg: Proposal, data: ProposerMeta) if (isCoordinatorOf(msg.rnd) && data.crnd < msg.rnd) =>
-      log.info("Starting phase1a in round {}", msg.rnd)
-      sender ! 
+      log.info("WORKER Starting phase1a in round {}", msg.rnd)
+      sender ! data 
       stay() using data.copy(crnd = msg.rnd, cval = VMap[Values]())
 
     // Receive a proposal msg from a client
@@ -27,21 +27,22 @@ trait ProposerWorker {
            data.prnd == msg.rnd && 
            data.pval == VMap[Values]()) &&
           msg.value(self) != Nil) {
-        (msg.rnd.cfproposers union data.config.acceptors).foreach(_ ! Msg2A(msg.rnd, msg.value)) 
+        //(msg.rnd.cfproposers union data.config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
         stay() using data.copy(pval = msg.value)
       }
       else {
         log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}", this.hashCode, msg, msg.rnd.cfproposers)
         //TODO select a random cfp
-        msg.rnd.cfproposers.foreach(_ ! msg)
+        //msg.rnd.cfproposers.foreach(_ ! msg)
       }
+      sender ! data 
       stay()
 
     case Event(msg: Msg2A, data: ProposerMeta) if (isCFProposerOf(msg.rnd) && 
                                                    data.prnd == msg.rnd && 
                                                    data.pval == VMap[Values]())=> 
       if (msg.value(self) == Nil) {
-        (data.config.learners).foreach(_ ! Msg2A(msg.rnd, msg.value))
+        //(data.config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
         stay() using data.copy(pval = msg.value)
       }
       stay()
