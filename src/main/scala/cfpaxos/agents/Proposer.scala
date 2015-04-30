@@ -5,9 +5,6 @@ import cfpaxos._
 import cfpaxos.messages._
 import cfpaxos.protocol._
 import scala.concurrent.Future
-import akka.pattern.ask
-import akka.util.Timeout
-import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 import concurrent.Promise
@@ -73,7 +70,6 @@ trait Proposer extends ActorLogging {
     newState.future
   }
 
-
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, ProposerMeta]): Receive = {
     case msg: Proposal =>
       val state = instances(msg.instance)
@@ -117,7 +113,6 @@ trait Proposer extends ActorLogging {
         case Failure(ex) => println(s"2Prepare Promise fail, not update State. Because of a ${ex.getMessage}")
       }
 
-
     // TODO: Do this in a sharedBehavior
     // Add nodes on init phase
     case msg: UpdateConfig =>
@@ -142,8 +137,7 @@ trait Proposer extends ActorLogging {
   }
 }
 
-class ProposerActor extends Actor
-  with Proposer {
+class ProposerActor extends Actor with Proposer {
   var qcounter: Int = 0
 
   def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
