@@ -17,7 +17,7 @@ trait Learner extends ActorLogging {
     val newState = Promise[LearnerMeta]()
     Future {
       if (state.quorum.isEmpty) {
-        newState.success(state.copy(quorum = state.quorum + sender))
+        newState.success(state.copy(quorum = state.quorum + (sender -> msg)))
       }
       // TODO: Speculative execution
       if (state.quorum.size > config.quorumSize) {
@@ -29,6 +29,7 @@ trait Learner extends ActorLogging {
 
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, LearnerMeta]): Receive = {
     case msg: Msg2B =>
+      log.info("Received MSG2B from {}", sender)
       val state = instances(msg.instance)
       val newState: Future[LearnerMeta] = learn(msg, state, config)
       newState.onComplete {
@@ -49,5 +50,5 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor extends Actor with Learner {
-  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> LearnerMeta(VMap[Values](), Set())))
+  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> LearnerMeta(VMap[Values](), Map())))
 }

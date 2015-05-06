@@ -17,7 +17,7 @@ trait Proposer extends ActorLogging {
     val newState = Promise[ProposerMeta]()
     Future {
       if (isCoordinatorOf(msg.rnd) && state.crnd < msg.rnd) {
-         newState.success(ProposerMeta(state.prnd, state.pval, msg.rnd, VMap[Values]()))
+         newState.success(ProposerMeta(state.prnd, state.pval, msg.rnd, VMap[Values](), state.quorum))
          config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
       } else if ((isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == VMap[Values]()) && msg.value(self) != Nil) {
         (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
@@ -48,16 +48,21 @@ trait Proposer extends ActorLogging {
   def phase2Start(msg: Msg1B, state: ProposerMeta, config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     Future {
-      // TODO verify quorum
-      if (isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == VMap[Values]())
-        log.info("Received MSG1B from {}", sender)
-        // save sender actorref for this round
-        //TODO!
+      if (state.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == VMap[Values]()) {
+        log.info("QUORUM: {}", state.quorum) 
+        // Maybe use foldLeft in case where S is empty.
+        val S = state.quorum.values.asInstanceOf[Iterable[Msg1B]].reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vval
+        if(S == VMap[Values]()) { // 0 == bottom!?
+          newState.success(state.copy(cval = VMap[Values]()))
+          config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, S))
+        }
+        //TODO else*/
+      } else newState.success(state)
     }
     newState.future
   }  
 
-  def phase2Prepare(msg: Msg2Prepare, state: ProposerMeta, config: ClusterConfiguration): Future[ProposerMeta] = {
+  def phase2Prepare(msg: Msg2S, state: ProposerMeta, config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
     Future {
@@ -73,8 +78,8 @@ trait Proposer extends ActorLogging {
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, ProposerMeta]): Receive = {
     case msg: Proposal =>
       val state = instances(msg.instance)
-      log.info("Starting phase1a in round {}", msg.rnd)
-      log.info("DATA: {} {}", config, state)
+      log.info("Received PROPOSAL {} from {} and STARTING PHASE1A in round {}", msg, sender, msg.rnd)
+      log.info("Actual CONFIG: {} and STATE: {}", config, state)
       // TODO: Make this lazy and chain instances
       val newState: Future[ProposerMeta] = phase1A(msg, state, config)
       newState.onComplete {
@@ -85,6 +90,7 @@ trait Proposer extends ActorLogging {
       }
 
     case msg: Msg2A =>
+      log.info("Received MSG2A from {}", sender)
       val state = instances(msg.instance)
       val newState: Future[ProposerMeta] = phase2A(msg, state, config)
       newState.onComplete {
@@ -95,22 +101,25 @@ trait Proposer extends ActorLogging {
 
     // Phase2Start
     case msg: Msg1B =>
-      val state = instances(msg.instance)
+      log.info("Received MSG1B from {}", sender)
+      println("ACTUAL: " + instances + " INSTANCE " + msg.instance)
+      val state = instances(msg.instance).copy(quorum =  instances(msg.instance).quorum + (sender -> msg))
       val newState: Future[ProposerMeta] = phase2Start(msg, state, config)
       newState.onComplete {
-        case Success(s) => 
+        case Success(s) =>
           context.become(proposerBehavior(config, instances + (msg.instance -> s)))
-        case Failure(ex) => println(s"2Start Promise fail, not update State. Because of a ${ex.getMessage}")
+        case Failure(ex) => println(s"2S Promise fail, not update State. Because of a ${ex.getMessage}")
       }
 
     // Phase2Prepare
-    case msg: Msg2Prepare =>
+    case msg: Msg2S =>
+      log.info("Received MSG2S from {}", sender)
       val state = instances(msg.instance)
       val newState: Future[ProposerMeta] = phase2Prepare(msg, state, config)
       newState.onComplete {
         case Success(s) => 
           context.become(proposerBehavior(config, instances + (msg.instance -> s)))
-        case Failure(ex) => println(s"2Prepare Promise fail, not update State. Because of a ${ex.getMessage}")
+        case Failure(ex) => println(s"2S Promise fail, not update State. Because of a ${ex.getMessage}")
       }
 
     // TODO: Do this in a sharedBehavior
@@ -128,7 +137,7 @@ trait Proposer extends ActorLogging {
         val cfp = Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
         //TODO: get the next available instance
         val state = instances(0)
-        println("MY STATE: " + state + " Proposed Value: " + value)
+        log.info("STARTING ROUND {} on {} with CFPS: {} and Value: {}", state.crnd.count + 1, sender, cfp, value)
         self ! Proposal(0, Round(state.crnd.count + 1, state.crnd.coordinator + self, cfp) , VMap(self -> value))
 
     case Command(cmd) => 
@@ -138,7 +147,6 @@ trait Proposer extends ActorLogging {
 }
 
 class ProposerActor extends Actor with Proposer {
-  var qcounter: Int = 0
 
   def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
 
@@ -160,5 +168,5 @@ class ProposerActor extends Actor with Proposer {
         println("Iam NOT the LEADER. My id is: " + self.hashCode)
   }
   
-  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> ProposerMeta(Round(), VMap[Values](), Round(), VMap[Values]())))
+  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> ProposerMeta(Round(), VMap[Values](), Round(), VMap[Values](), Map())))
 }

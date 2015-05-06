@@ -13,7 +13,7 @@ import scala.util.{Success, Failure}
 trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
 
-  def phase2B1(msg: Msg2Start, state: AcceptorMeta, config: ClusterConfiguration): Future[AcceptorMeta] = {
+  def phase2B1(msg: Msg2S, state: AcceptorMeta, config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     Future {
       // Cond 1
@@ -73,20 +73,21 @@ trait Acceptor extends ActorLogging {
 
     // Phase2B
     // FIXME: Execute this once!!
-    case msg: Msg2Start =>
-      log.info("Received Msg2Start from {}", sender)
+    case msg: Msg2S =>
+      log.info("Received Msg2S from {}", sender)
       val state = instances(msg.instance)
       if (state.rnd <= msg.rnd) {
         val newState: Future[AcceptorMeta] = phase2B1(msg, state, config)
         newState.onComplete {
           case Success(s) => 
             context.become(acceptorBehavior(config, instances + (msg.instance -> s)))
-          case Failure(ex) => println(s"2Start Promise fail, not update State. Because of a ${ex.getMessage}")
+          case Failure(ex) => println(s"2S Promise fail, not update State. Because of a ${ex.getMessage}")
         }
       }
     
     // FIXME: data.value(sender) != Nil -> how to unique identify actors? using actorref?
     case msg: Msg2A =>
+      log.info("Received MSG2A from {}", sender)
       val state = instances(msg.instance)
       if (state.rnd <= msg.rnd) {
         val newState: Future[AcceptorMeta] = phase2B2(msg, state, config)
@@ -110,5 +111,5 @@ trait Acceptor extends ActorLogging {
 }
 
 class AcceptorActor extends Actor with Acceptor {
-  def receive = acceptorBehavior(ClusterConfiguration(), Map(0 -> AcceptorMeta(Round(), Round(), VMap[Values]())))
+  def receive = acceptorBehavior(ClusterConfiguration(), Map(0 -> AcceptorMeta(Round(), Round(), VMap[Values](), Map())))
 }

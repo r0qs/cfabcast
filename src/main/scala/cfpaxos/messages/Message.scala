@@ -18,11 +18,8 @@ case class Msg1A(instance: Int, rnd: Round) extends Message
 // Message sent by acceptor a to the coordinator of round rnd.
 case class Msg1B(instance: Int, rnd: Round, vrnd: Round, vval: VMap[Values]) extends Message
 
-// Message sent by coordinator to all proposers and acceptors.
-case class Msg2Start(instance: Int, rnd: Round, value: VMap[Values]) extends Message
-
-// Message sent by coordinator c to all proposers.
-case class Msg2Prepare(instance: Int, rnd: Round, value: VMap[Values]) extends Message
+// Message sent by coordinator to all proposers and/or acceptors.
+case class Msg2S(instance: Int, rnd: Round, value: VMap[Values]) extends Message
 
 // Message sent by collision-fast proposer cfp to all acceptors and others collision-fast proposers on the same round rnd.
 case class Msg2A(instance: Int, rnd: Round, value: VMap[Values]) extends Message
