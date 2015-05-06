@@ -79,7 +79,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       //leader ! Proposal(new Round(0,Set(leader),config.proposers), VMap(leader -> Value(Some(cmd))))
 
     case state: CurrentClusterState =>
-      log.info("Current members: {}", state.members)
+      log.info("Current members: {}\n", state.members)
 
     case MemberUp(member) if !(nodes.contains(member.address)) => register(member)
     
@@ -90,7 +90,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
 
     case ActorIdentity(member: Member, None) =>
-      log.info("Unable to find any protocol actor on node: {}", member.address)
+      log.info("Unable to find any protocol actor on node: {}\n", member.address)
     
     case GiveMeAgents =>
       sender ! GetAgents(config)

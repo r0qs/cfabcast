@@ -29,21 +29,21 @@ trait Learner extends ActorLogging {
 
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, LearnerMeta]): Receive = {
     case msg: Msg2B =>
-      log.info("Received MSG2B from {}", sender)
+      log.info("Received MSG2B from {}\n", sender)
       val state = instances(msg.instance)
       val newState: Future[LearnerMeta] = learn(msg, state, config)
       newState.onComplete {
         case Success(s) => 
           context.become(learnerBehavior(config, instances + (msg.instance -> s)))
-        case Failure(ex) => println(s"1A Promise fail, not update State. Because of a ${ex.getMessage}")
+        case Failure(ex) => println(s"1A Promise fail, not update State. Because of a ${ex.getMessage}\n")
       }
 
     /// TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
       if(msg.until <= msg.config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", msg.until)
+        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", msg.until)
       } else
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", msg.config.acceptors.size, msg.until)
+        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", msg.config.acceptors.size, msg.until)
       context.become(learnerBehavior(msg.config, instances))
       //TODO MemberRemoved
   }
