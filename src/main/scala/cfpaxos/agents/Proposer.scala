@@ -54,7 +54,7 @@ trait Proposer extends ActorLogging {
         // S is a SET of values proposed in the greatest round vrnd
         val msgs = state.quorum.values.asInstanceOf[Iterable[Msg1B]]
         val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
-        val S = msgs.filter(a => (a.vrnd == k) && (a.vval != Nil))//.map(a => a.vval)
+        val S = msgs.filter(a => (a.vrnd == k) && (a.vval != Nil)).map(a => a.vval)
         if(S.isEmpty) {
           newState.success(state.copy(cval = VMap[Values]())) //Bottom vmap
           config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, VMap[Values]()))
