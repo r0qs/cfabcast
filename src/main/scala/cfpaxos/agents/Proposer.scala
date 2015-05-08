@@ -16,16 +16,18 @@ trait Proposer extends ActorLogging {
   def phase1A(msg: Proposal, state: ProposerMeta, config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     Future {
+      log.info("\n PROPOSED VALUE: {} \n", msg.value)
       if (isCoordinatorOf(msg.rnd) && state.crnd < msg.rnd) {
-         newState.success(ProposerMeta(state.prnd, state.pval, msg.rnd, VMap[Values](), state.quorum))
+         newState.success(ProposerMeta(state.prnd, state.pval, msg.rnd, NONE, state.quorum))
          config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
-      } else if ((isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == VMap[Values]()) && msg.value(self) != Nil) {
+      } else if ((isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == NONE) && msg.value(self) != Nil) {
         (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
-        newState.success(state.copy(pval = msg.value))
+        newState.success(state.copy(pval = state.pval ++: msg.value))
       } else {
         log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", this.hashCode, msg, msg.rnd.cfproposers)
         //TODO select a random cfp
-        msg.rnd.cfproposers.foreach(_ ! msg)
+        val cfps = msg.rnd.cfproposers
+        cfps.toVector(Random.nextInt(cfps.size)) ! msg
       }
     }
     newState.future
@@ -34,7 +36,7 @@ trait Proposer extends ActorLogging {
   def phase2A(msg: Msg2A, state: ProposerMeta, config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     Future {
-      if (isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == VMap[Values]()) {
+      if (isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == NONE) {
         newState.success(state.copy(pval = msg.value))
         if (msg.value(self) == Nil) 
           (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
@@ -49,13 +51,13 @@ trait Proposer extends ActorLogging {
     val newState = Promise[ProposerMeta]()
     Future {
       log.info("QUORUM: {}, is COORDINATOR? {}\n", state.quorum, isCoordinatorOf(msg.rnd)) 
-      if (state.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == VMap[Values]()) {
+      if (state.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == NONE) {
         val msgs = state.quorum.values.asInstanceOf[Iterable[Msg1B]]
         val k = msgs.par.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
         val S = msgs.par.filter(a => (a.vrnd == k) && (a.vval != Nil)).map(a => a.vval).toSet
         if(S.isEmpty) {
-          newState.success(state.copy(cval = VMap[Values]())) //Bottom vmap
-          config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, VMap[Values]()))
+          newState.success(state.copy(cval = Bottom)) //Bottom vmap
+          config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Bottom))
         } else {
           log.info("S:{} cval:{}", S, state.cval)
           //TODO: LUB
@@ -72,7 +74,7 @@ trait Proposer extends ActorLogging {
     Future {
       if(state.prnd < msg.rnd) {
         log.info("Received: {} with state: {} \n",msg, state)
-        if(msg.value.isEmpty) newState.success(state.copy(prnd = msg.rnd, pval = VMap[Values]()))
+        if(msg.value.isEmpty) newState.success(state.copy(prnd = msg.rnd, pval = NONE))
         else newState.success(state.copy(prnd = msg.rnd, pval = msg.value))
       }
     }
@@ -82,6 +84,7 @@ trait Proposer extends ActorLogging {
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, ProposerMeta]): Receive = {
     case msg: Proposal =>
       val state = instances(msg.instance)
+      log.info("INSTANCES: \n\n {} \n", instances)
       log.info("Received PROPOSAL {} from {} and STARTING PHASE1A in round {}\n", msg, sender, msg.rnd)
       log.info("Actual CONFIG: {} and STATE: {}\n", config, state)
       // TODO: Make this lazy and chain instances
@@ -172,5 +175,5 @@ class ProposerActor extends Actor with Proposer {
         println("Iam NOT the LEADER. My id is: \n" + self.hashCode)
   }
   
-  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> ProposerMeta(Round(), VMap[Values](), Round(), VMap[Values](), Map())))
+  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> ProposerMeta(Round(), NONE, Round(), NONE, Map())))
 }

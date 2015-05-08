@@ -17,7 +17,7 @@ trait Acceptor extends ActorLogging {
     val newState = Promise[AcceptorMeta]()
     Future {
       // Cond 1
-      if ((!msg.value.isEmpty && state.vrnd < msg.rnd) || state.vval(self) == Nil) {
+      if ((!msg.value.isEmpty && state.vrnd < msg.rnd) || state.vval(self) == NONE) {
         config.learners foreach (_ ! Msg2B(msg.instance, state.rnd, state.vval))
         newState.success(state.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value))
       }
@@ -31,7 +31,7 @@ trait Acceptor extends ActorLogging {
       // Cond 2
       if (!state.vval.isEmpty) {
         var value = VMap[Values]()
-        if (state.vrnd < msg.rnd || state.vval(self) == Nil) {
+        if (state.vrnd < msg.rnd || state.vval(self) == NONE) {
           // extends value and put Nil for all proposers
           value = VMap(sender -> msg.value(sender))
           for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)

@@ -22,12 +22,13 @@ class Value extends Values {
 
 object Value {
   def apply(v: Option[String]) = new Value { override val value = v }
-  def apply() = Nil
+  def apply() = new Value()
 }
 
+// FIXME: there's a better way to do this?
 object Nil extends Values{
-  type T = Option[String]
-  val value: T = None
+  type T = Option[Int]
+  val value: T = Some(-1)
 }
 
 // Map a ActorRef identifier to a Value
@@ -39,11 +40,13 @@ extends LinkedHashMap[ActorRef, T]
   override def empty = new VMap[T]
 
   // isEmpty verify if a vmap is bottom
+  
+  // ++: Append operation
 }
 
 object VMap {
   def empty[T] = new VMap[T]
-
+  
   def apply[T](vmaps: (ActorRef, T)*): VMap[T] = {
     val nvm: VMap[T] = empty
     for (vm <- vmaps) nvm += vm
@@ -60,3 +63,8 @@ object VMap {
         def apply() = newBuilder[T]
       }
 }
+
+object Bottom extends VMap[Values]
+
+//TODO: change none definition
+object NONE extends VMap[Values]
