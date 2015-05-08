@@ -39,7 +39,7 @@ trait Proposer extends ActorLogging {
         if (msg.value(self) == Nil) 
           (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
         else
-         (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
+          (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
       }
     }
     newState.future
@@ -50,16 +50,15 @@ trait Proposer extends ActorLogging {
     Future {
       log.info("QUORUM: {}, is COORDINATOR? {}\n", state.quorum, isCoordinatorOf(msg.rnd)) 
       if (state.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == VMap[Values]()) {
-        // Maybe use foldLeft in case where quorum is empty.
-        // S is a SET of values proposed in the greatest round vrnd
         val msgs = state.quorum.values.asInstanceOf[Iterable[Msg1B]]
-        val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
-        val S = msgs.filter(a => (a.vrnd == k) && (a.vval != Nil)).map(a => a.vval)
+        val k = msgs.par.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
+        val S = msgs.par.filter(a => (a.vrnd == k) && (a.vval != Nil)).map(a => a.vval).toSet
         if(S.isEmpty) {
           newState.success(state.copy(cval = VMap[Values]())) //Bottom vmap
           config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, VMap[Values]()))
         } else {
           log.info("S:{} cval:{}", S, state.cval)
+          //TODO: LUB
           //append 
         }
       } else newState.success(state)
