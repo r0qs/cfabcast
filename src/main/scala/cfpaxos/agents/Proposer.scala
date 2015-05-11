@@ -18,11 +18,11 @@ trait Proposer extends ActorLogging {
     Future {
       log.info("\n PROPOSED VALUE: {} \n", msg.value)
       if (isCoordinatorOf(msg.rnd) && state.crnd < msg.rnd) {
-         newState.success(ProposerMeta(state.prnd, state.pval, msg.rnd, NONE, state.quorum))
+         newState.success(ProposerMeta(state.prnd, state.pval, msg.rnd, None, state.quorum))
          config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
-      } else if ((isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == NONE) && msg.value(self) != Nil) {
+      } else if ((isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == None) && msg.value.get(self) != Nil) {
         (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
-        newState.success(state.copy(pval = state.pval ++: msg.value))
+        newState.success(state.copy(pval = Some(state.pval.get ++: msg.value.get)))
       } else {
         log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", this.hashCode, msg, msg.rnd.cfproposers)
         //TODO select a random cfp
@@ -36,9 +36,9 @@ trait Proposer extends ActorLogging {
   def phase2A(msg: Msg2A, state: ProposerMeta, config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     Future {
-      if (isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == NONE) {
+      if (isCFProposerOf(msg.rnd) && state.prnd == msg.rnd && state.pval == None) {
         newState.success(state.copy(pval = msg.value))
-        if (msg.value(self) == Nil) 
+        if (msg.value.get(self) == Nil) 
           (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
         else
           (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
@@ -51,13 +51,13 @@ trait Proposer extends ActorLogging {
     val newState = Promise[ProposerMeta]()
     Future {
       log.info("QUORUM: {}, is COORDINATOR? {}\n", state.quorum, isCoordinatorOf(msg.rnd)) 
-      if (state.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == NONE) {
+      if (state.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && state.crnd == msg.rnd && state.cval == None) {
         val msgs = state.quorum.values.asInstanceOf[Iterable[Msg1B]]
         val k = msgs.par.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
         val S = msgs.par.filter(a => (a.vrnd == k) && (a.vval != Nil)).map(a => a.vval).toSet
         if(S.isEmpty) {
-          newState.success(state.copy(cval = Bottom)) //Bottom vmap
-          config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Bottom))
+          newState.success(state.copy(cval = Some(VMap[Values]()))) //Bottom vmap
+          config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
         } else {
           log.info("S:{} cval:{}", S, state.cval)
           //TODO: LUB
@@ -74,7 +74,7 @@ trait Proposer extends ActorLogging {
     Future {
       if(state.prnd < msg.rnd) {
         log.info("Received: {} with state: {} \n",msg, state)
-        if(msg.value.isEmpty) newState.success(state.copy(prnd = msg.rnd, pval = NONE))
+        if(msg.value.isEmpty) newState.success(state.copy(prnd = msg.rnd, pval = None))
         else newState.success(state.copy(prnd = msg.rnd, pval = msg.value))
       }
     }
@@ -145,7 +145,7 @@ trait Proposer extends ActorLogging {
         //TODO: get the next available instance
         val state = instances(0)
         log.info("STARTING ROUND {} on {} with CFPS: {} and Value: {}\n", state.crnd.count + 1, sender, cfp, value)
-        self ! Proposal(0, Round(state.crnd.count + 1, state.crnd.coordinator + self, cfp) , VMap(self -> value))
+        self ! Proposal(0, Round(state.crnd.count + 1, state.crnd.coordinator + self, cfp) , Some(VMap(self -> value)))
 
     case Command(cmd) => 
         println(s"COMMAND: ${cmd}\n")
@@ -175,5 +175,5 @@ class ProposerActor extends Actor with Proposer {
         println("Iam NOT the LEADER. My id is: \n" + self.hashCode)
   }
   
-  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> ProposerMeta(Round(), NONE, Round(), NONE, Map())))
+  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> ProposerMeta(Round(), None, Round(), None, Map())))
 }

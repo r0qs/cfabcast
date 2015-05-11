@@ -50,5 +50,5 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor extends Actor with Learner {
-  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> LearnerMeta(VMap[Values](), Map())))
+  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> LearnerMeta(Some(VMap[Values]()), Map())))
 }

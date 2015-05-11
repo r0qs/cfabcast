@@ -17,7 +17,7 @@ trait Acceptor extends ActorLogging {
     val newState = Promise[AcceptorMeta]()
     Future {
       // Cond 1
-      if ((!msg.value.isEmpty && state.vrnd < msg.rnd) || state.vval(self) == NONE) {
+      if ((!msg.value.isEmpty && state.vrnd < msg.rnd) || state.vval.get(self) == None) {
         config.learners foreach (_ ! Msg2B(msg.instance, state.rnd, state.vval))
         newState.success(state.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value))
       }
@@ -31,15 +31,15 @@ trait Acceptor extends ActorLogging {
       // Cond 2
       if (!state.vval.isEmpty) {
         var value = VMap[Values]()
-        if (state.vrnd < msg.rnd || state.vval(self) == NONE) {
+        if (state.vrnd < msg.rnd || state.vval.get(self) == None) {
           // extends value and put Nil for all proposers
-          value = VMap(sender -> msg.value(sender))
+          value = VMap(sender -> msg.value.get(sender))
           for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
         } else {
            value ++: VMap(sender -> msg.value)
         }
         config.learners foreach (_ ! Msg2B(msg.instance, state.rnd, state.vval))
-        newState.success(state.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = value))
+        newState.success(state.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value)))
       }
     }
     newState.future
@@ -111,5 +111,5 @@ trait Acceptor extends ActorLogging {
 }
 
 class AcceptorActor extends Actor with Acceptor {
-  def receive = acceptorBehavior(ClusterConfiguration(), Map(0 -> AcceptorMeta(Round(), Round(), VMap[Values](), Map())))
+  def receive = acceptorBehavior(ClusterConfiguration(), Map(0 -> AcceptorMeta(Round(), Round(), None, Map())))
 }

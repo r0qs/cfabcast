@@ -12,21 +12,21 @@ private[protocol] trait StateMetadata extends Serializable {
   
   case class ProposerMeta(
     prnd: Round,
-    pval: VMap[Values],
+    pval: Option[VMap[Values]],
     crnd: Round,
-    cval: VMap[Values],
+    cval: Option[VMap[Values]],
     quorum: Map[ActorRef, Message]
   )extends Metadata
 
   case class AcceptorMeta(
     rnd: Round,
     vrnd: Round,
-    vval: VMap[Values],
+    vval: Option[VMap[Values]],
     quorum: Map[ActorRef, Message]
   )extends Metadata
 
   case class LearnerMeta(
-    learned: VMap[Values],
+    learned: Option[VMap[Values]],
     quorum: Map[ActorRef, Message]
   )extends Metadata
 

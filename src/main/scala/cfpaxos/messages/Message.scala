@@ -10,22 +10,22 @@ import cfpaxos._
 sealed class Message
 
 // Message sent by proposer p to the collision-fast proposer for the current round of p.
-case class Proposal(instance: Int, rnd: Round, value: VMap[Values]) extends Message
+case class Proposal(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by coordinator c to all acceptors.
 case class Msg1A(instance: Int, rnd: Round) extends Message
 
 // Message sent by acceptor a to the coordinator of round rnd.
-case class Msg1B(instance: Int, rnd: Round, vrnd: Round, vval: VMap[Values]) extends Message
+case class Msg1B(instance: Int, rnd: Round, vrnd: Round, vval: Option[VMap[Values]]) extends Message
 
 // Message sent by coordinator to all proposers and/or acceptors.
-case class Msg2S(instance: Int, rnd: Round, value: VMap[Values]) extends Message
+case class Msg2S(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by collision-fast proposer cfp to all acceptors and others collision-fast proposers on the same round rnd.
-case class Msg2A(instance: Int, rnd: Round, value: VMap[Values]) extends Message
+case class Msg2A(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by acceptor a to all learners.
-case class Msg2B(instance: Int, rnd: Round, value: VMap[Values]) extends Message
+case class Msg2B(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by learners to all Agents if something was learned.
 case object Learn extends Message

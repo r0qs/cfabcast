@@ -27,8 +27,8 @@ object Value {
 
 // FIXME: there's a better way to do this?
 object Nil extends Values{
-  type T = Option[Int]
-  val value: T = Some(-1)
+  type T = Option[String]
+  val value: T = Some("")
 }
 
 // Map a ActorRef identifier to a Value
@@ -64,7 +64,3 @@ object VMap {
       }
 }
 
-object Bottom extends VMap[Values]
-
-//TODO: change none definition
-object NONE extends VMap[Values]
