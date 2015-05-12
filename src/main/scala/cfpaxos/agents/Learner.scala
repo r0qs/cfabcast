@@ -13,30 +13,27 @@ import scala.util.{Success, Failure}
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def learn(msg: Msg2B, state: LearnerMeta, config: ClusterConfiguration): Future[LearnerMeta] = {
+  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
     val newState = Promise[LearnerMeta]()
-    Future {
-      if (state.quorum.isEmpty) {
-        newState.success(state.copy(quorum = state.quorum + (sender -> msg)))
-      }
-      // TODO: Speculative execution
-      if (state.quorum.size > config.quorumSize) {
-        newState.success(state.copy(learned = msg.value))
-      }
+    state onComplete {
+      case Success(s) =>
+                println(s"LEARNED: ${s.learned}\n")
+                if (s.quorum.isEmpty) {
+                  newState.success(s.copy(quorum = s.quorum + (sender -> msg)))
+                } else if (s.quorum.size > config.quorumSize) {
+                  newState.success(s.copy(learned = msg.value))
+                } else newState.success(s)
+                // TODO: Speculative execution
+      case Failure(ex) => println(s"Learn Promise fail, not update State. Because of a ${ex.getMessage}\n")
     }
     newState.future
   }
 
-  def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, LearnerMeta]): Receive = {
+  def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]]): Receive = {
     case msg: Msg2B =>
       log.info("Received MSG2B from {}\n", sender)
       val state = instances(msg.instance)
-      val newState: Future[LearnerMeta] = learn(msg, state, config)
-      newState.onComplete {
-        case Success(s) => 
-          context.become(learnerBehavior(config, instances + (msg.instance -> s)))
-        case Failure(ex) => println(s"1A Promise fail, not update State. Because of a ${ex.getMessage}\n")
-      }
+      context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
 
     /// TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
@@ -50,5 +47,5 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor extends Actor with Learner {
-  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> LearnerMeta(Some(VMap[Values]()), Map())))
+  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(LearnerMeta(Some(VMap[Values]()), Map()))))
 }
