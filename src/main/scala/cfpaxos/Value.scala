@@ -42,6 +42,19 @@ extends LinkedHashMap[ActorRef, T]
   // isEmpty verify if a vmap is bottom
   
   // ++: Append operation
+
+  def domain = this.keySet
+
+  def subset(that: VMap[T]): Boolean =  this.forall({ case (k, _) => that.contains(k) })
+
+  def prefix(that: VMap[T]) = this.filter({ case (k, _) => this.get(k) == that.get(k) })
+
+  def isPrefix(that: VMap[T]): Boolean = {
+    //TODO: Strict Prefix: if this != that (realy needed?)
+    // If this and that is None, this isPrefix of that.
+    this.forall({ case (k, _) => that.contains(k) && this.get(k) == that.get(k) })
+  }
+
 }
 
 object VMap {
