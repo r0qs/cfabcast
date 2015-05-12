@@ -55,6 +55,21 @@ extends LinkedHashMap[ActorRef, T]
     this.forall({ case (k, _) => that.contains(k) && this.get(k) == that.get(k) })
   }
 
+  def glb(s: Set[VMap[T]]): VMap[T] = s.reduce(_ prefix _)
+  //s.reduce((a, b) => prefix(a, b))
+
+  def areCompatible(that: VMap[T]): Boolean = if(this.isEmpty || that.isEmpty) true else (this prefix that).nonEmpty
+
+  def isCompatible(s: Set[VMap[T]]): Boolean = {
+    if (s.isEmpty) true
+    else {
+      val a: VMap[T] = s.head
+      if (s.tail.forall(b => a areCompatible b)) isCompatible(s.tail)
+      else false
+    }
+  }
+
+  def lub(s: Set[VMap[T]]) = s.flatten.toMap
 }
 
 object VMap {
