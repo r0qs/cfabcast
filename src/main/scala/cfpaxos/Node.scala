@@ -70,7 +70,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   def configuration(config: ClusterConfiguration): Receive = {
     case StartConsole => console ! StartConsole
     case Command(cmd) =>
-      println("Command " + cmd + " received!")
+ //     println("Command " + cmd + " received!")
       // FIXME: Remove this awful test
       proposers.head ! Command(cmd)
       //val leader = config.proposers.minBy(_.hashCode)

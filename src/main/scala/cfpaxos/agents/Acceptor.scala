@@ -18,7 +18,7 @@ trait Acceptor extends ActorLogging {
     state onComplete {
       case Success(s) => // Cond 1
                 if (s.rnd <= msg.rnd) {
-                  if ((!msg.value.isEmpty && s.vrnd < msg.rnd) || s.vval.get(self) == None) {
+                  if ((!msg.value.isEmpty && s.vrnd < msg.rnd) || s.vval == None) {
                     config.learners foreach (_ ! Msg2B(msg.instance, s.rnd, s.vval))
                     newState.success(s.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value))
                   }
@@ -34,19 +34,18 @@ trait Acceptor extends ActorLogging {
     val actorSender = sender
     state onComplete {
       case Success(s) => // Cond 2
-              if (s.rnd <= msg.rnd) {
-                if (!s.vval.isEmpty) {
-                  var value = VMap[Values]()
-                  if (s.vrnd < msg.rnd || s.vval.get(self) == None) {
-                    // extends value and put Nil for all proposers
-                    value = VMap(actorSender -> msg.value.get(actorSender))
-                    for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
-                  } else {
-                    value ++: VMap(actorSender -> msg.value)
-                  }
-                  config.learners foreach (_ ! Msg2B(msg.instance, s.rnd, s.vval))
-                  newState.success(s.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value)))
+              if (s.rnd <= msg.rnd && msg.value.get(actorSender) != Nil) {
+                var value = VMap[Values]()
+                if (s.vrnd < msg.rnd || s.vval == None) {
+                  // extends value and put Nil for all proposers
+                  value = VMap(actorSender -> msg.value.get(actorSender))
+                  for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
+                } else {
+                  value = s.vval.get ++ msg.value.get
+                  println(s"2A VALUE: ${value}\n")
                 }
+                config.learners foreach (_ ! Msg2B(msg.instance, s.rnd, s.vval))
+                newState.success(s.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value)))
               } else newState.success(s)
       case Failure(ex) => println(s"2B2 Promise fail, not update State. Because of a ${ex.getMessage}\n")
     }
@@ -73,20 +72,20 @@ trait Acceptor extends ActorLogging {
     // For this instance and round the sender need to be a coordinator
     // Make this verification for all possible instances
     case msg: Msg1A =>
-      log.info("Received MSG1A from {}\n", sender)
+      log.info("Received MSG1A from {}\n", sender.hashCode)
       val state = instances(msg.instance)
       context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(msg, state, config))))
 
     // Phase2B
     // FIXME: Execute this once!!
     case msg: Msg2S =>
-      log.info("Received Msg2S from {}\n", sender)
+     log.info("Received Msg2S from {}\n", sender.hashCode)
       val state = instances(msg.instance)
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B1(msg, state, config))))
     
     // FIXME: data.value(sender) != Nil -> how to unique identify actors? using actorref?
     case msg: Msg2A =>
-      log.info("Received MSG2A from {}\n", sender)
+      log.info("Received MSG2A from {}\n", sender.hashCode)
       val state = instances(msg.instance)
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(msg, state, config))))
     

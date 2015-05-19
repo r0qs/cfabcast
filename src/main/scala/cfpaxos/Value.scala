@@ -2,9 +2,11 @@ package cfpaxos
 
 import collection.mutable._
 import scala.collection.mutable.{Builder, MapBuilder}
+import scala.collection.immutable.Set
 import scala.collection.generic.CanBuildFrom
 import akka.actor.ActorRef
 import java.io._
+import scala.collection.GenTraversableOnce
 
 //TODO: Improve this!
 abstract class Values extends Serializable {
@@ -36,12 +38,29 @@ class VMap[T]
 extends LinkedHashMap[ActorRef, T]
   with MapLike[ActorRef, T, VMap[T]] {
 
+  private val map = LinkedHashMap.empty[ActorRef, T]
+
+  override def get(key: ActorRef): Option[T] = map.get(key)
+
+  override def iterator: Iterator[(ActorRef, T)] = map.iterator
+/*
+  override def -= (key: ActorRef): this.type = {
+    map -= key
+    this
+  }
+*/
+  override def update(a: ActorRef, value: T) = map += (a -> value)
+
+  override def remove(a: ActorRef): Option[T] = { val e = map.get(a); map -= a; e }
+
+  override def += (kv: (ActorRef, T)): this.type = { update(kv._1, kv._2); this }
+
+  override def -= (a: ActorRef): this.type  = { remove(a); this }
+
   // A empty VMap is a bottom one.
   override def empty = new VMap[T]
 
   // isEmpty verify if a vmap is bottom
-  
-  // ++: Append operation
 
   def domain = this.keySet
 
@@ -92,3 +111,4 @@ object VMap {
       }
 }
 
+//TODO: Define CStruct as Option[VMap[Values]]

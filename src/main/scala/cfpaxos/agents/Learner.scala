@@ -13,25 +13,51 @@ import scala.util.{Success, Failure}
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
+  def learn(msg: Message, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
     val newState = Promise[LearnerMeta]()
+    val actorSender = sender
     state onComplete {
       case Success(s) =>
                 println(s"LEARNED: ${s.learned}\n")
-                if (s.quorum.isEmpty) {
-                  newState.success(s.copy(quorum = s.quorum + (sender -> msg)))
-                } else if (s.quorum.size > config.quorumSize) {
-                  newState.success(s.copy(learned = msg.value))
-                } else newState.success(s)
-                // TODO: Speculative execution
+                // TODO: verify learner round!?
+                msg match {
+                    case m: Msg2A =>
+                      if (m.value.get(actorSender) == Nil && m.rnd.cfproposers(actorSender)){
+                        newState.success(s.copy(P = s.P + actorSender))
+                        println(s"FAST for ${actorSender.hashCode}\n")
+                      }
+                    case m: Msg2B =>
+                      if (s.quorum.size >= config.quorumSize) {
+                        var msgs = s.quorum.values.asInstanceOf[Iterable[Msg2B]]
+                        //.toSet ++ Set(m)
+                        println(s"MSGS 2B RECEIVED: ${msgs}")
+                        var Q2bVals = msgs.map(a => a.value).toSet.flatMap( (e: Option[VMap[Values]]) => e)
+                        Q2bVals += m.value.get
+                        println(s"Q2bVals: ${Q2bVals}\n")
+                        var value = VMap[Values]()
+                        for (p <- s.P) value += (p -> Nil)
+                        val w: Option[VMap[Values]] = Some(value.glb(Q2bVals) ++: value)
+                        // TODO: Speculative execution
+                        newState.success(s.copy(learned = w))
+                      }
+                      else newState.success(s.copy(quorum = s.quorum + (actorSender -> m)))
+                    case _ => println("Unknown message\n")
+                }
+                println("NOTHING!\n")
+                newState.success(s)
       case Failure(ex) => println(s"Learn Promise fail, not update State. Because of a ${ex.getMessage}\n")
     }
     newState.future
   }
 
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]]): Receive = {
+    case msg: Msg2A =>
+      log.info("Received MSG2A from {}\n", sender.hashCode)
+      val state = instances(msg.instance)
+      context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
+
     case msg: Msg2B =>
-      log.info("Received MSG2B from {}\n", sender)
+      log.info("Received MSG2B from {}\n", sender.hashCode)
       val state = instances(msg.instance)
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
 
@@ -47,5 +73,5 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor extends Actor with Learner {
-  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(LearnerMeta(Some(VMap[Values]()), Map()))))
+  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set()))))
 }

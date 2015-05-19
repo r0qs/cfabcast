@@ -27,7 +27,8 @@ private[protocol] trait StateMetadata extends Serializable {
 
   case class LearnerMeta(
     learned: Option[VMap[Values]],
-    quorum: Map[ActorRef, Message]
+    quorum: Map[ActorRef, Message],
+    P: Set[ActorRef]
   )extends Metadata
 
 }
