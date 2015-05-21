@@ -18,7 +18,7 @@ trait Acceptor extends ActorLogging {
     state onComplete {
       case Success(s) => // Cond 1
                 if (s.rnd <= msg.rnd) {
-                  if ((!msg.value.isEmpty && s.vrnd < msg.rnd) || s.vval == None) {
+                  if ((!msg.value.get.isEmpty && s.vrnd < msg.rnd) || s.vval == None) {
                     config.learners foreach (_ ! Msg2B(msg.instance, s.rnd, s.vval))
                     newState.success(s.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value))
                   }
@@ -31,14 +31,17 @@ trait Acceptor extends ActorLogging {
 
   def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
-    val actorSender = sender
+    val actorSender = sender //FIXME!!!!! See below. 
     state onComplete {
       case Success(s) => // Cond 2
-              if (s.rnd <= msg.rnd && msg.value.get(actorSender) != Nil) {
+              //FIXME: actorSender trigger: "java.util.NoSuchElementException: key not found" in line below,
+              //if (s.rnd <= msg.rnd && msg.value.get(actorSender) != Nil) {
+              if (s.rnd <= msg.rnd && msg.value.get.getValue.get != Nil) {
                 var value = VMap[Values]()
                 if (s.vrnd < msg.rnd || s.vval == None) {
                   // extends value and put Nil for all proposers
-                  value = VMap(actorSender -> msg.value.get(actorSender))
+//                  value = VMap(actorSender -> msg.value.get(actorSender))
+                  value = msg.value.get
                   for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
                 } else {
                   value = s.vval.get ++ msg.value.get

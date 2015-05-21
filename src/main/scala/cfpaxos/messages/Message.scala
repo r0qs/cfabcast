@@ -30,6 +30,10 @@ case class Msg2B(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends
 // Message sent by learners to all Agents if something was learned.
 case object Learn extends Message
 
+// Message sent to start the protocol (Phase1)
+case class Configure(instance: Int, rnd: Round) extends Message
+
+// Message sent to start a new round
 case class StartRound(value: Values) extends Message
 
 /*

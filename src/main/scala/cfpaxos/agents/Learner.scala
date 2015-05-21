@@ -25,7 +25,7 @@ trait Learner extends ActorLogging {
                       if (m.value.get(actorSender) == Nil && m.rnd.cfproposers(actorSender)){
                         newState.success(s.copy(P = s.P + actorSender))
                         println(s"FAST for ${actorSender.hashCode}\n")
-                      }
+                      } else newState.success(s)
                     case m: Msg2B =>
                       if (s.quorum.size >= config.quorumSize) {
                         var msgs = s.quorum.values.asInstanceOf[Iterable[Msg2B]]
@@ -39,12 +39,11 @@ trait Learner extends ActorLogging {
                         val w: Option[VMap[Values]] = Some(value.glb(Q2bVals) ++: value)
                         // TODO: Speculative execution
                         newState.success(s.copy(learned = w))
-                      }
-                      else newState.success(s.copy(quorum = s.quorum + (actorSender -> m)))
-                    case _ => println("Unknown message\n")
+                      } else newState.success(s.copy(quorum = s.quorum + (actorSender -> m)))
+                    case _ => 
+                      println("Unknown message\n")
+                      newState.success(s)
                 }
-                println("NOTHING!\n")
-                newState.success(s)
       case Failure(ex) => println(s"Learn Promise fail, not update State. Because of a ${ex.getMessage}\n")
     }
     newState.future

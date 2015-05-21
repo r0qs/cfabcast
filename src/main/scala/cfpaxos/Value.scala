@@ -42,6 +42,14 @@ extends LinkedHashMap[ActorRef, T]
 
   override def get(key: ActorRef): Option[T] = map.get(key)
 
+  def getValue: Option[T] = {
+    if(map.nonEmpty) {
+      val k = map.keys.head
+      map.get(k)
+    }
+    else None
+  }
+
   override def iterator: Iterator[(ActorRef, T)] = map.iterator
 /*
   override def -= (key: ActorRef): this.type = {
