@@ -42,12 +42,14 @@ trait Acceptor extends ActorLogging {
                   // extends value and put Nil for all proposers
 //                  value = VMap(actorSender -> msg.value.get(actorSender))
                   value = msg.value.get
-                  for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
+                  println(s"****** EXTENDING VALUE BEFORE: ${value}")
+                  for (p <- (config.proposers diff msg.rnd.cfproposers) - msg.value.get.head._1) value += (p -> Nil)
+                  println(s"****** EXTENDING VALUE: ${value}")
                 } else {
                   value = s.vval.get ++ msg.value.get
-                  println(s"2A VALUE: ${value}\n")
+                  println(s"****** 2A VALUE: ${value}\n")
                 }
-                config.learners foreach (_ ! Msg2B(msg.instance, s.rnd, s.vval))
+                config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, Some(value)))
                 newState.success(s.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value)))
               } else newState.success(s)
       case Failure(ex) => println(s"2B2 Promise fail, not update State. Because of a ${ex.getMessage}\n")

@@ -34,7 +34,7 @@ case object Learn extends Message
 case class Configure(instance: Int, rnd: Round) extends Message
 
 // Message sent to start a new round
-case class StartRound(value: Values) extends Message
+case class HandleProposal(instance: Int, rnd: Round, value: Values) extends Message
 
 /*
  * Cluster Messages
@@ -42,6 +42,13 @@ case class StartRound(value: Values) extends Message
 case class UpdateConfig(agentType: String, config: ClusterConfiguration, until: Int) extends Message
 case class GetAgents(config: ClusterConfiguration) extends Message
 case object GiveMeAgents extends Message
+
+/*
+ * Leader Election Messages
+ */
+case class MemberChange(config: ClusterConfiguration) extends Message
+case class NewLeader(newLeader: ActorRef) extends Message
+
 
 /*
  * Console Messages

@@ -50,6 +50,8 @@ extends LinkedHashMap[ActorRef, T]
     else None
   }
 
+  def isSingleMap: Boolean = map.size == 1
+  
   override def iterator: Iterator[(ActorRef, T)] = map.iterator
 /*
   override def -= (key: ActorRef): this.type = {

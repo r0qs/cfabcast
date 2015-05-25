@@ -56,6 +56,14 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
   val console = context.actorOf(Props[ConsoleClient], "console")
 
+  val leaderElection = context.actorOf(Props[LeaderElection], "leaderElection")
+
+  var instance: Int = 0
+
+  var round: Round = Round()
+
+  var leader: Option[ActorRef] = None
+
   def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "node*"
 
   def register(member: Member): Unit = {
@@ -68,14 +76,31 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   def receive = configuration(ClusterConfiguration(proposers, acceptors, learners))
 
   def configuration(config: ClusterConfiguration): Receive = {
+    case NewLeader(newLeader: ActorRef) =>  
+      //val cfp = Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
+      //TODO: get the next available instance and choose round based on self id
+      // 0,3,6; 1,4,7; 2,5,8
+      // build instance, rnd and cfp set, and send to leader
+      if(waitFor <= config.acceptors.size) {
+        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", waitFor)
+        //TODO: make leader election here
+        leader = Some(newLeader)
+        if (context.children.toSet contains newLeader) {
+          val cfp = Set(newLeader)
+          newLeader ! Configure(0, Round(round.count + 1, Set(newLeader), cfp))
+        }
+      } else {
+        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", config.acceptors.size, waitFor)
+      }
+
     case StartConsole => console ! StartConsole
+
+    // FIXME: Remove this awful test
     case Command(cmd) =>
- //     println("Command " + cmd + " received!")
-      // FIXME: Remove this awful test
-      proposers.head ! Command(cmd)
-      //val leader = config.proposers.minBy(_.hashCode)
-      //println("MIN: "+ leader.hashCode)
-      //println("MY CONFIG: " + config)
+      // FIXME handle none option
+      round = Round(round.count + 1, Set(leader.get), Set(leader.get))
+      // FIXME: Send proposal to cfps set
+      leader.get ! HandleProposal(instance, round, Value(Some(cmd)))
       //leader ! Proposal(new Round(0,Set(leader),config.proposers), VMap(leader -> Value(Some(cmd))))
 
     case state: CurrentClusterState =>
@@ -83,24 +108,26 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     case MemberUp(member) if !(nodes.contains(member.address)) => register(member)
     
-    case ActorIdentity(member: Member, Some(ref)) => {
-      //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
-      // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
+    // Return the ActorRef of a member node
+    case ActorIdentity(member: Member, Some(ref)) => 
       ref ! GiveMeAgents
-    }
 
     case ActorIdentity(member: Member, None) =>
       log.info("Unable to find any protocol actor on node: {}\n", member.address)
     
+    // Get the configuration of some member node
     case GiveMeAgents =>
       sender ! GetAgents(config)
 
-    case GetAgents(newConfig: ClusterConfiguration) => {
-      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig("proposer", config + newConfig, waitFor) }
-      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig("acceptor", config + newConfig, waitFor) }
-      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig("learner", config + newConfig, waitFor) }
-      context.become(configuration(config + newConfig))
-    }
+    case GetAgents(newConfig: ClusterConfiguration) => 
+      val actualConfig = config + newConfig
+      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig("proposer", actualConfig, waitFor) }
+      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig("acceptor", actualConfig, waitFor) }
+      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig("learner", actualConfig, waitFor) }
+      //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
+      // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
+      leaderElection ! MemberChange(actualConfig)
+      context.become(configuration(actualConfig))
 
     // TODO: Improve this
     case Terminated(ref) =>

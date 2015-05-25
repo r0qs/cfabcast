@@ -18,7 +18,6 @@ trait Learner extends ActorLogging {
     val actorSender = sender
     state onComplete {
       case Success(s) =>
-                println(s"LEARNED: ${s.learned}\n")
                 // TODO: verify learner round!?
                 msg match {
                     case m: Msg2A =>
@@ -27,6 +26,7 @@ trait Learner extends ActorLogging {
                         println(s"FAST for ${actorSender.hashCode}\n")
                       } else newState.success(s)
                     case m: Msg2B =>
+                      println(s"LEARNER QUORUM: ${s.quorum}\n")
                       if (s.quorum.size >= config.quorumSize) {
                         var msgs = s.quorum.values.asInstanceOf[Iterable[Msg2B]]
                         //.toSet ++ Set(m)
@@ -38,8 +38,10 @@ trait Learner extends ActorLogging {
                         for (p <- s.P) value += (p -> Nil)
                         val w: Option[VMap[Values]] = Some(value.glb(Q2bVals) ++: value)
                         // TODO: Speculative execution
+                        println(s"LEARNED: ${w}\n")
                         newState.success(s.copy(learned = w))
-                      } else newState.success(s.copy(quorum = s.quorum + (actorSender -> m)))
+                      } 
+                      else newState.success(s)
                     case _ => 
                       println("Unknown message\n")
                       newState.success(s)
@@ -57,9 +59,13 @@ trait Learner extends ActorLogging {
 
     case msg: Msg2B =>
       log.info("Received MSG2B from {}\n", sender.hashCode)
-      val state = instances(msg.instance)
-      context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
-
+      val actorSender = sender
+      val state: Future[LearnerMeta] = instances(msg.instance)
+      state onSuccess {
+          case s =>
+            println(s"SENDER of 2B: ${actorSender}\n")
+            context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, Future.successful(s.copy(quorum =  s.quorum + (actorSender -> msg))), config))))
+      }
     /// TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
       if(msg.until <= msg.config.acceptors.size) {

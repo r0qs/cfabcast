@@ -44,8 +44,8 @@ trait Proposer extends ActorLogging {
                   } else {
                     log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", this.hashCode, msg, msg.rnd.cfproposers)
                     val cfps = msg.rnd.cfproposers
-                    cfps.toVector(Random.nextInt(cfps.size)) forward msg
-                    newState.success(s)
+                    cfps.toVector(Random.nextInt(cfps.size)) forward msg 
+                    newState.success(s) 
                   }
       case Failure(ex) => println(s"Propose promise execution fail, not update State. Because of a ${ex.getMessage}\n")
     }
@@ -126,6 +126,7 @@ trait Proposer extends ActorLogging {
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
     case msg: Configure =>
+      println(s"Iam a LEADER! My id is: ${self.hashCode}\n")
       log.info("Received Configure {} from {} and STARTING PHASE1A\n", msg, sender.hashCode)
       val state = instances(msg.instance)
       context.become(proposerBehavior(config, instances + (msg.instance -> phase1A(msg, state, config))))
@@ -151,7 +152,6 @@ trait Proposer extends ActorLogging {
                 log.info("MSG1B add quorum: {}\n",s)
                 context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, Future.successful(s.copy(quorum =  s.quorum + (actorSender -> msg))), config))))
       }
-//      context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, state, config))))
 
     // Phase2Prepare
     case msg: Msg2S =>
@@ -161,77 +161,35 @@ trait Proposer extends ActorLogging {
 
     // TODO: Do this in a sharedBehavior
     // Add nodes on init phase
+
     case msg: UpdateConfig =>
-      if(msg.until <= msg.config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", msg.until)
-        doLeaderElection(msg.config)
-        //TODO: make leader election here
-      } else
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", msg.config.acceptors.size, msg.until)
       context.become(proposerBehavior(msg.config, instances))
       //TODO MemberRemoved
 
-    case StartRound(value) =>
-        val actorSender = sender
-        val s = instances(0)
+    case msg: HandleProposal =>
+        val s = instances(msg.instance)
         println(s"Try starting round: ${s.isCompleted}")
-        instances(0) onComplete {
+        // TODO: Verify if instance has learned something
+        s onComplete {
           case Success(state) =>
-                    println(s"Starting round with state ${state}")
-                    state.crnd.cfproposers.head ! Proposal(0, state.crnd , Some(VMap(actorSender -> value)))
-                    context.become(proposerBehavior(config, instances + (0 -> Future.successful(state))))
+                    println(s"Starting round with state ${state}\n")
+                    println(s"CFP: ${msg.rnd.cfproposers}, COORDINATOR: ${msg.rnd.coordinator}, R: ${msg.rnd.count}\n")
+                    if (isCFProposerOf(msg.rnd))
+                      self ! Proposal(msg.instance, msg.rnd, Some(VMap(self -> msg.value)))
+                    else {
+                      val cfps = msg.rnd.cfproposers
+                      cfps.toVector(Random.nextInt(cfps.size)) forward msg
+                    }
+                    context.become(proposerBehavior(config, instances + (msg.instance -> Future.successful(state))))
           case Failure(ex) => println(s"Instance 0 not initiate. Because of a ${ex.getMessage}\n")
         }
-
-/*        //val cfp = Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
-        val cfp = Set(self)
-        //TODO: get the next available instance and choose round based on self id
-        // 0,3,6; 1,4,7; 2,5,8
-        val actorSender = sender
-        println(s"Receive ${value} from ${actorSender.hashCode}\n Try start a new round with cfps: ${cfp.head.hashCode}\n")
-        println(s"INSTANCES: ${instances}")
-        instances(0) onComplete {
-          case Success(state) =>
-                    //FIXME: choose one cfp
-                    log.info("STARTING ROUND {}", Round(state.crnd.count + 1, state.crnd.coordinator + self, cfp))
-                    self ! Proposal(0, Round(state.crnd.count + 1, state.crnd.coordinator + self, cfp) , Some(VMap(actorSender -> value)))
-                    context.become(proposerBehavior(config, instances + (0 -> Future.successful(state))))
-          case Failure(ex) => println(s"Instance 0 not initiate. Because of a ${ex.getMessage}\n")
-        }
-        */
-
-    case Command(cmd) => 
-        println(s"COMMAND: ${cmd} and LEADER: ${leader}\n")
-        leader ! StartRound(Value(Some(cmd)))
   }
 }
 
 class ProposerActor extends Actor with Proposer {
-
   def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
 
   def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
 
-  var leader: ActorRef = self
-  var coordinator: Set[ActorRef] = Set[ActorRef]()
-
-  def doLeaderElection(config: ClusterConfiguration) = {
-      // TODO: Make leader election
-      leader = config.proposers.minBy(_.hashCode)
-      coordinator += leader
-      println("MIN: "+ leader.hashCode)
-      if(leader == self) {
-        println(s"Iam a LEADER! My id is: ${self.hashCode}\n")
-        //val cfp = Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
-        //TODO: get the next available instance and choose round based on self id
-        // 0,3,6; 1,4,7; 2,5,8
-        val cfp = Set(leader)
-        self ! Configure(0, Round(1, Set(leader), cfp))
-      }
-      else {
-        println(s"Iam NOT the LEADER. My id is: ${self.hashCode}\n")
-      }
-  }
-  
   def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(ProposerMeta(Round(), None, Round(), None, Map()))))
 }
