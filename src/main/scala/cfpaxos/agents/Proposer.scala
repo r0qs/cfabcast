@@ -13,6 +13,10 @@ import scala.util.{Success, Failure}
 trait Proposer extends ActorLogging {
   this: ProposerActor =>
 
+  override def preStart(): Unit = {
+    log.info("Proposer ID: {} UP on {}\n", self.hashCode, self.path)
+  }
+
   def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     state onComplete {
@@ -158,11 +162,10 @@ trait Proposer extends ActorLogging {
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
 
     // TODO: Do this in a sharedBehavior
-    // Add nodes on init phase
 
     case msg: UpdateConfig =>
       context.become(proposerBehavior(msg.config, instances))
-      //TODO MemberRemoved
+    //TODO MemberRemoved
 
     case msg: HandleProposal =>
         val s = instances(msg.instance)

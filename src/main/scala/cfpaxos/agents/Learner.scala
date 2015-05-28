@@ -12,6 +12,10 @@ import scala.util.{Success, Failure}
 
 trait Learner extends ActorLogging {
   this: LearnerActor =>
+  
+  override def preStart(): Unit = {
+    log.info("Learner ID: {} UP on {}\n", self.hashCode, self.path)
+  }
 
   def learn(msg: Message, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
     val newState = Promise[LearnerMeta]()
@@ -39,8 +43,10 @@ trait Learner extends ActorLogging {
                         println(s"GLB: ${VMap.glb(Q2bVals)} VALUE: ${value}\n")
                         val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
                         // TODO: Speculative execution
-                        log.info("LEARNER {} --- LEARNED: {}\n", self, w)
-                        newState.success(s.copy(learned = w))
+                        val Slub: Set[VMap[Values]] = Set(s.learned.get, w.get)
+                        val lubVals = VMap.lub(Slub)
+                        log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
+                        newState.success(s.copy(learned = Some(lubVals)))
                       } 
                       else newState.success(s)
                     case _ => 
@@ -69,12 +75,8 @@ trait Learner extends ActorLogging {
       }
     /// TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
-      if(msg.until <= msg.config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", msg.until)
-      } else
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", msg.config.acceptors.size, msg.until)
       context.become(learnerBehavior(msg.config, instances))
-      //TODO MemberRemoved
+    //TODO MemberRemoved
   }
 }
 

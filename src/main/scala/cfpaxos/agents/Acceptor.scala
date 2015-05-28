@@ -13,6 +13,10 @@ import scala.util.{Success, Failure}
 trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
 
+  override def preStart(): Unit = {
+    log.info("Acceptor ID: {} UP on {}\n", self.hashCode, self.path)
+  }
+
   def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     state onComplete {
@@ -91,12 +95,8 @@ trait Acceptor extends ActorLogging {
     
     // TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
-      if(msg.until <= msg.config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", msg.until)
-      } else
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", msg.config.acceptors.size, msg.until)
       context.become(acceptorBehavior(msg.config, instances))
-      //TODO MemberRemoved
+    //TODO MemberRemoved
   }
       
 }

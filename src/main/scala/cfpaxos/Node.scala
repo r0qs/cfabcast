@@ -101,7 +101,6 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       round = Round(round.count + 1, Set(leader.get), Set(leader.get))
       // FIXME: Send proposal to cfps set
       leader.get ! HandleProposal(instance, round, Value(Some(cmd)))
-      //leader ! Proposal(new Round(0,Set(leader),config.proposers), VMap(leader -> Value(Some(cmd))))
 
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)
@@ -126,6 +125,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig("learner", actualConfig, waitFor) }
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
+      //TODO: Do this only if proposers change
       leaderElection ! MemberChange(actualConfig)
       context.become(configuration(actualConfig))
 
