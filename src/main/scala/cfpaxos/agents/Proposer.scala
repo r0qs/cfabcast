@@ -34,9 +34,7 @@ trait Proposer extends ActorLogging {
     state onComplete {
       case Success(s) =>
                   log.info("PROPOSED MSG: {}\n MY STATE: {}\n", msg, s)
-                  println(s"${isCFProposerOf(msg.rnd)}, ${s.prnd}: ${msg.rnd}, ${s.pval}, ${msg.value.get} ActorSender: ${actorSender} self ${self}\n")
-//                  if ((isCFProposerOf(msg.rnd) && s.prnd == msg.rnd && s.pval == None) && msg.value.get(actorSender) != Nil) {
-                  if ((isCFProposerOf(msg.rnd) && s.prnd == msg.rnd && s.pval == None) && msg.value.get.getValue.get != Nil) {
+                  if ((isCFProposerOf(msg.rnd) && s.prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
                     // Phase 2A for CFProposers
                     log.info("Iam CFProposer of: {} \n", msg.rnd)
                     (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
@@ -90,8 +88,8 @@ trait Proposer extends ActorLogging {
             } else {
               var value = VMap[Values]()
               for (p <- config.proposers) value += (p -> Nil) 
-              println(s"S DESGRAÇA: ${s.cval.get.lub(S)}\n")
-              val cval: VMap[Values] = s.cval.get.lub(S) ++: value
+              println(s"LUB: ${VMap.lub(S)}\n")
+              val cval: VMap[Values] = VMap.lub(S) ++: value
               println(s"CVAL PHASE2 START: ${cval}")
               (config.proposers union config.acceptors).foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(cval)))
               newState.success(s.copy(cval = Some(cval)))
@@ -172,10 +170,11 @@ trait Proposer extends ActorLogging {
         // TODO: Verify if instance has learned something
         s onComplete {
           case Success(state) =>
-                    println(s"Starting round with state ${state}\n")
+                    println(s"Starting round with state ${state} -- Proposal: ${msg.value}\n")
                     println(s"CFP: ${msg.rnd.cfproposers}, COORDINATOR: ${msg.rnd.coordinator}, R: ${msg.rnd.count}\n")
-                    if (isCFProposerOf(msg.rnd))
+                    if (isCFProposerOf(msg.rnd)) {
                       self ! Proposal(msg.instance, msg.rnd, Some(VMap(self -> msg.value)))
+                    }
                     else {
                       val cfps = msg.rnd.cfproposers
                       cfps.toVector(Random.nextInt(cfps.size)) forward msg

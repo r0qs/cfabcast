@@ -35,19 +35,14 @@ trait Acceptor extends ActorLogging {
     state onComplete {
       case Success(s) => // Cond 2
               //FIXME: actorSender trigger: "java.util.NoSuchElementException: key not found" in line below,
-              //if (s.rnd <= msg.rnd && msg.value.get(actorSender) != Nil) {
-              if (s.rnd <= msg.rnd && msg.value.get.getValue.get != Nil) {
+              if (s.rnd <= msg.rnd && msg.value.getOrElse(actorSender, None) != Nil) {
                 var value = VMap[Values]()
                 if (s.vrnd < msg.rnd || s.vval == None) {
                   // extends value and put Nil for all proposers
-//                  value = VMap(actorSender -> msg.value.get(actorSender))
                   value = msg.value.get
-                  println(s"****** EXTENDING VALUE BEFORE: ${value}")
-                  for (p <- (config.proposers diff msg.rnd.cfproposers) - msg.value.get.head._1) value += (p -> Nil)
-                  println(s"****** EXTENDING VALUE: ${value}")
+                  for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
                 } else {
                   value = s.vval.get ++ msg.value.get
-                  println(s"****** 2A VALUE: ${value}\n")
                 }
                 config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, Some(value)))
                 newState.success(s.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value)))

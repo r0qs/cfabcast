@@ -12,15 +12,18 @@ import scala.collection.GenTraversableOnce
 abstract class Values extends Serializable {
   type T
   val value: T
-  override def toString: String = value.toString 
+  override def toString: String = value.toString
 }
 
 class Value extends Values {
   type T = Option[String]
   val value: T = None
+  override def equals(other : Any) : Boolean = other match {
+    case that : Value => (that.canEqual(this) && this.value == that.value)
+    case _ => false
+  }
+  def canEqual(other : Any) : Boolean = other.isInstanceOf[Value]
 }
-
-// none = VMap[Values]()
 
 object Value {
   def apply(v: Option[String]) = new Value { override val value = v }
@@ -38,34 +41,7 @@ class VMap[T]
 extends LinkedHashMap[ActorRef, T]
   with MapLike[ActorRef, T, VMap[T]] {
 
-  private val map = LinkedHashMap.empty[ActorRef, T]
-
-  override def get(key: ActorRef): Option[T] = map.get(key)
-
-  def getValue: Option[T] = {
-    if(map.nonEmpty) {
-      val k = map.keys.head
-      map.get(k)
-    }
-    else None
-  }
-
-  def isSingleMap: Boolean = map.size == 1
-  
-  override def iterator: Iterator[(ActorRef, T)] = map.iterator
-/*
-  override def -= (key: ActorRef): this.type = {
-    map -= key
-    this
-  }
-*/
-  override def update(a: ActorRef, value: T) = map += (a -> value)
-
-  override def remove(a: ActorRef): Option[T] = { val e = map.get(a); map -= a; e }
-
-  override def += (kv: (ActorRef, T)): this.type = { update(kv._1, kv._2); this }
-
-  override def -= (a: ActorRef): this.type  = { remove(a); this }
+  def isSingleMap: Boolean = this.size == 1
 
   // A empty VMap is a bottom one.
   override def empty = new VMap[T]
@@ -76,29 +52,21 @@ extends LinkedHashMap[ActorRef, T]
 
   def subset(that: VMap[T]): Boolean =  this.forall({ case (k, _) => that.contains(k) })
 
-  def prefix(that: VMap[T]) = this.filter({ case (k, _) => this.get(k) == that.get(k) })
-
   def isPrefix(that: VMap[T]): Boolean = {
     //TODO: Strict Prefix: if this != that (realy needed?)
     // If this and that is None, this isPrefix of that.
     this.forall({ case (k, _) => that.contains(k) && this.get(k) == that.get(k) })
   }
 
-  def glb(s: Set[VMap[T]]): VMap[T] = s.reduce(_ prefix _)
-  //s.reduce((a, b) => prefix(a, b))
-
-  def areCompatible(that: VMap[T]): Boolean = if(this.isEmpty || that.isEmpty) true else (this prefix that).nonEmpty
-
-  def isCompatible(s: Set[VMap[T]]): Boolean = {
-    if (s.isEmpty) true
-    else {
-      val a: VMap[T] = s.head
-      if (s.tail.forall(b => a areCompatible b)) isCompatible(s.tail)
-      else false
-    }
+  def prefix(that: VMap[T]) = {
+    this.filter({ case (k, v1) =>
+      val v2 = that.get(k)
+      if (v2 != None) v1 == v2.asInstanceOf[Option[Values]].get
+      else v1 == v2
+    })
   }
 
-  def lub(s: Set[VMap[T]]) = s.flatten.toMap
+  def areCompatible(that: VMap[T]): Boolean = if(this.isEmpty || that.isEmpty) true else (this prefix that).nonEmpty
 }
 
 object VMap {
@@ -119,6 +87,20 @@ object VMap {
         def apply(from: VMap[_]) = newBuilder[T]
         def apply() = newBuilder[T]
       }
+
+
+  def glb[T](s: Set[VMap[T]]): VMap[T] = s.reduce((a, b) => a prefix b)
+
+  def isCompatible[T](s: Set[VMap[T]]): Boolean = {
+    if (s.isEmpty) true
+    else {
+      val a: VMap[T] = s.head
+      if (s.tail.forall(b => a areCompatible b)) isCompatible(s.tail)
+      else false
+    }
+  }
+
+  def lub[T](s: Set[VMap[T]]) = s.flatten.toMap
 }
 
 //TODO: Define CStruct as Option[VMap[Values]]

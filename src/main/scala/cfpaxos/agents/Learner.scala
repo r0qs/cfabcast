@@ -31,14 +31,15 @@ trait Learner extends ActorLogging {
                         var msgs = s.quorum.values.asInstanceOf[Iterable[Msg2B]]
                         //.toSet ++ Set(m)
                         println(s"MSGS 2B RECEIVED: ${msgs}")
-                        var Q2bVals = msgs.map(a => a.value).toSet.flatMap( (e: Option[VMap[Values]]) => e)
-                        Q2bVals += m.value.get
-                        println(s"Q2bVals: ${Q2bVals}\n")
+                        val Q2bVals = msgs.map(a => a.value).toSet.flatMap( (e: Option[VMap[Values]]) => e)
+                        //Q2bVals += m.value.get
+                        println(s"Q2bVals: ${Q2bVals}\n P ====> ${s.P}\n")
                         var value = VMap[Values]()
                         for (p <- s.P) value += (p -> Nil)
-                        val w: Option[VMap[Values]] = Some(value.glb(Q2bVals) ++: value)
+                        println(s"GLB: ${VMap.glb(Q2bVals)} VALUE: ${value}\n")
+                        val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
                         // TODO: Speculative execution
-                        println(s"LEARNED: ${w}\n")
+                        log.info("LEARNER {} --- LEARNED: {}\n", self, w)
                         newState.success(s.copy(learned = w))
                       } 
                       else newState.success(s)
