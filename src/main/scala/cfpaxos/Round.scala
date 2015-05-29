@@ -4,6 +4,7 @@ import akka.actor.ActorRef
 
 case class Round(count: Int, coordinator: Set[ActorRef], cfproposers: Set[ActorRef]) extends Ordered[Round] {
   override def compare(that: Round) = (this.count - that.count) match {
+    //FIXME: Not get only the head of coordinators
     case 0 if (!coordinator.isEmpty) => (this.coordinator.head.hashCode - that.coordinator.head.hashCode)
     case n => n.toInt
   }

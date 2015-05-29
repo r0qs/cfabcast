@@ -56,13 +56,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
   val console = context.actorOf(Props[ConsoleClient], "console")
 
-  val leaderElection = context.actorOf(Props[LeaderElection], "leaderElection")
-
-  var instance: Int = 0
-
-  var round: Round = Round()
-
-  var leader: Option[ActorRef] = None
+  val leaderOracle = context.actorOf(Props[LeaderOracle], "leaderOracle")
 
   def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "node*"
 
@@ -76,31 +70,12 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   def receive = configuration(ClusterConfiguration(proposers, acceptors, learners))
 
   def configuration(config: ClusterConfiguration): Receive = {
-    case NewLeader(newLeader: ActorRef) =>  
-      //val cfp = Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
-      //TODO: get the next available instance and choose round based on self id
-      // 0,3,6; 1,4,7; 2,5,8
-      // build instance, rnd and cfp set, and send to leader
-      if(waitFor <= config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", waitFor)
-        //TODO: make leader election here
-        leader = Some(newLeader)
-        if (context.children.toSet contains newLeader) {
-          val cfp = Set(newLeader)
-          newLeader ! Configure(0, Round(round.count + 1, Set(newLeader), cfp))
-        }
-      } else {
-        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", config.acceptors.size, waitFor)
-      }
-
     case StartConsole => console ! StartConsole
 
     // FIXME: Remove this awful test
     case Command(cmd) =>
-      // FIXME handle none option
-      round = Round(round.count + 1, Set(leader.get), Set(leader.get))
       // FIXME: Send proposal to cfps set
-      leader.get ! HandleProposal(instance, round, Value(Some(cmd)))
+      proposers.foreach(_ ! MakeProposal(Value(Some(cmd))))
 
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)
@@ -120,14 +95,16 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     case GetAgents(newConfig: ClusterConfiguration) => 
       val actualConfig = config + newConfig
-      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig("proposer", actualConfig, waitFor) }
-      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig("acceptor", actualConfig, waitFor) }
-      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig("learner", actualConfig, waitFor) }
+      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(actualConfig) }
+      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(actualConfig) }
+      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig(actualConfig) }
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
       //TODO: Do this only if proposers change
-      leaderElection ! MemberChange(actualConfig)
+      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
+
+    case GetCFPs => Set(config.proposers.toVector(Random.nextInt(config.proposers.size))) pipeTo sender
 
     // TODO: Improve this
     case Terminated(ref) =>

@@ -47,6 +47,7 @@ trait Learner extends ActorLogging {
                         val lubVals = VMap.lub(Slub)
                         log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
                         newState.success(s.copy(learned = Some(lubVals)))
+                        instancesLearned.insert(msg.instance)
                       } 
                       else newState.success(s)
                     case _ => 
@@ -73,13 +74,20 @@ trait Learner extends ActorLogging {
             println(s"SENDER of 2B: ${actorSender}\n")
             context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, Future.successful(s.copy(quorum =  s.quorum + (actorSender -> msg))), config))))
       }
-    /// TODO: Do this in a sharedBehavior
+    
+    case msg: WhatULearn =>
+      // TODO: Send interval of learned instances
+      instancesLearned pipeTo sender
+
     case msg: UpdateConfig =>
       context.become(learnerBehavior(msg.config, instances))
-    //TODO MemberRemoved
+    // TODO MemberRemoved
   }
 }
 
 class LearnerActor extends Actor with Learner {
+  
+  var instancesLearned: IRange = IRange()
+
   def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set()))))
 }

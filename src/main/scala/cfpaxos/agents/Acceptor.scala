@@ -80,6 +80,13 @@ trait Acceptor extends ActorLogging {
       val state = instances(msg.instance)
       context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(msg, state, config))))
 
+    case msg: Msg1Am =>
+      log.info("Received MSG1A from {}\n", sender.hashCode)
+      msg.instance.foreach(x => 
+        val state = instances(x)
+        context.become(acceptorBehavior(config, instances + (x ->  phase1B(msg, state, config))))
+      )
+
     // Phase2B
     // FIXME: Execute this once!!
     case msg: Msg2S =>

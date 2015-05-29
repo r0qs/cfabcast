@@ -9,6 +9,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 import concurrent.Promise
 import scala.util.{Success, Failure}
+import akka.pattern.ask
 
 trait Proposer extends ActorLogging {
   this: ProposerActor =>
@@ -126,12 +127,37 @@ trait Proposer extends ActorLogging {
     newState.future
   }
 
+  def getRoundCount(state: ProposerMeta): Int = if(s.crnd < grnd) grnd.count + 1 else s.crnd.count + 1
+
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
-    case msg: Configure =>
-      println(s"Iam a LEADER! My id is: ${self.hashCode}\n")
-      log.info("Received Configure {} from {} and STARTING PHASE1A\n", msg, sender.hashCode)
-      val state = instances(msg.instance)
-      context.become(proposerBehavior(config, instances + (msg.instance -> phase1A(msg, state, config))))
+    case NewLeader(coordinators: Set[ActorRef], until: Int) =>
+      //TODO: get the next available instance and choose round based on self id
+      // 0,3,6; 1,4,7; 2,5,8
+      if(until <= config.acceptors.size) {
+        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", until)
+        if (coordinators contains self) {
+          println(s"Iam a LEADER! My id is: ${self.hashCode}\n")
+          // Run configure phase (1)
+          // TODO: get cfproposers from some other actor (future)
+          // TODO: 1) Return a interval 2) ask for all learners and reduce the result
+          val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]]
+//          if(decided != Nil)
+            //exec phase1
+            // FINISH ME
+          val cfp: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]]
+          round = Round(getRoundCount, self, cfp)
+
+//        coordinators.foreach(_ ! HandleProposal(instance, round, Value(Some(cmd)))
+//        newLeader ! Configure(0, Round(round.count + 1, Set(newLeader), cfp))
+          log.info("STARTING PHASE1A\n")
+          
+          val state = instances(msg.instance)
+          context.become(proposerBehavior(config, instances + (msg.instance -> phase1A(msg, state, config))))
+
+        }
+      } else {
+        log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", config.acceptors.size, until)
+      }
 
     case msg: Proposal =>
       log.info("Received PROPOSAL {} from {} and STARTING ROUND in round {}\n", msg, sender.hashCode, msg.rnd)
@@ -167,7 +193,7 @@ trait Proposer extends ActorLogging {
       context.become(proposerBehavior(msg.config, instances))
     //TODO MemberRemoved
 
-    case msg: HandleProposal =>
+    case msg: MakeProposal =>
         val s = instances(msg.instance)
         println(s"Try starting round: ${s.isCompleted}")
         // TODO: Verify if instance has learned something
@@ -189,6 +215,12 @@ trait Proposer extends ActorLogging {
 }
 
 class ProposerActor extends Actor with Proposer {
+  
+  // Greatest known round
+  var grnd: Round = Round()
+  
+  var coordinator: Option[ActorRef] = None
+
   def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
 
   def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
