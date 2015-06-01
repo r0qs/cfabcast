@@ -141,7 +141,7 @@ trait Proposer extends ActorLogging {
           // TODO: get cfproposers from some other actor (future)
           // TODO: 1) Return a interval 2) ask for all learners and reduce the result
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]]
-//          if(decided != Nil)
+//          if(decided.isEmpty)
             //exec phase1
             // FINISH ME
           val cfp: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]]

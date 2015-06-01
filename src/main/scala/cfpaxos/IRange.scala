@@ -3,8 +3,15 @@ package cfpaxos
 /*
  * Interval of instances
  */
- class IRange(self: List[Interval]) {
+class IRange(self: List[Interval]) extends Iterable[Interval] {
   override def toString = self.toString
+  
+  override def iterator = self.iterator
+
+  override def isEmpty = self.isEmpty
+
+  override def nonEmpty = !self.isEmpty
+ 
   def insert(elem: Int): IRange = {
     def tryInsert(elem: Int, in: List[Interval]): List[Interval] = in match {
       case x::xs =>
@@ -33,28 +40,49 @@ package cfpaxos
     new IRange(tryInsert(elem, self))
   }
 
-  def foreach[U](f: Interval => U) = {
-    var these = self
-    while (!these.isEmpty) {
-      f(these.head)
-      these = these.tail
-    }
-  }
-  
   def iterateOverAll[U](f: Int => U) = 
     self.foreach(interval => interval.foreach(elem => f(elem)))
-  // TODO: complement of a given interval
+
+  def append(interval: Interval): IRange = {
+    var a = this
+    interval.foreach(elem => a = a insert elem)
+    a
+  }
+
+  def complement(start: Int = 0): IRange = {
+    var result = List.empty[Interval]
+    def makeComplement(first: Interval, second: List[Interval]): List[Interval] = {
+      if (second.nonEmpty) {
+        if (second.head.from - first.to > 0)
+          result = result :+ Interval(first.to + 1, second.head.from - 1)
+        makeComplement(second.head, second.tail)
+      }
+      else
+        result = result :+ Interval(first.to + 1, -1)
+      result
+    }
+
+    if(self.nonEmpty) {
+      if (self.head.from - start > 0)
+        result = result :+ Interval(start, self.head.from - 1)
+      new IRange(makeComplement(self.head, self.tail))
+    }
+    else
+      IRange() insert -1
+  }
 }
 
 object IRange {
   def apply() = new IRange(List())
 }
 
+class Interval(val from: Int, val to: Int) extends Ordered[Interval] {
+  def compare(that: Interval) = (this.to - this.from) - (that.to - that.from)
 
-//TODO: define order (min, max)
-class Interval(val from: Int, val to: Int) {
   def contains(elem: Int) = (from <= elem && elem <= to)
+
   def foreach[U](f: Int => U) = for(i <- from to to by 1) yield f(i)
+
   override def toString: String = s"[${from}, ${to}]"
 }
 
