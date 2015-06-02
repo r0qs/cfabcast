@@ -7,6 +7,8 @@ import cfpaxos.protocol._
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
+import akka.util.Timeout
+import scala.concurrent.duration._
 import concurrent.Promise
 import scala.util.{Success, Failure}
 
@@ -44,10 +46,10 @@ trait Learner extends ActorLogging {
                         val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
                         // TODO: Speculative execution
                         val Slub: Set[VMap[Values]] = Set(s.learned.get, w.get)
-                        val lubVals = VMap.lub(Slub)
+                        val lubVals: VMap[Values] = VMap.lub(Slub)
                         log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
                         newState.success(s.copy(learned = Some(lubVals)))
-                        instancesLearned.insert(msg.instance)
+                        instancesLearned.insert(msg.asInstanceOf[Msg2B].instance)
                       } 
                       else newState.success(s)
                     case _ => 
@@ -75,9 +77,10 @@ trait Learner extends ActorLogging {
             context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, Future.successful(s.copy(quorum =  s.quorum + (actorSender -> msg))), config))))
       }
     
-    case msg: WhatULearn =>
+    case WhatULearn =>
       // TODO: Send interval of learned instances
-      instancesLearned pipeTo sender
+      implicit val timeout = Timeout(10 seconds)
+      sender ! Future.successful(instancesLearned)
 
     case msg: UpdateConfig =>
       context.become(learnerBehavior(msg.config, instances))

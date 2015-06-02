@@ -15,7 +15,7 @@ abstract class Values extends Serializable {
   override def toString: String = value.toString
 }
 
-class Value extends Values {
+class Value private extends Values {
   type T = Option[String]
   val value: T = None
   override def equals(other : Any) : Boolean = other match {
@@ -37,7 +37,7 @@ object Nil extends Values{
 }
 
 // Map a ActorRef identifier to a Value
-class VMap[T]
+class VMap[T] private
 extends LinkedHashMap[ActorRef, T]
   with MapLike[ActorRef, T, VMap[T]] {
 
@@ -78,6 +78,12 @@ object VMap {
     nvm
   }
 
+  def fromSet[T](s: Set[(ActorRef, T)]): VMap[T] = {
+    val nvm: VMap[T] = empty
+    for (vm <- s) nvm += vm
+    nvm
+  }
+
   def newBuilder[T]: Builder[(ActorRef, T), VMap[T]] =
     new MapBuilder[ActorRef, T, VMap[T]](empty)
 
@@ -99,8 +105,8 @@ object VMap {
       else false
     }
   }
-
-  def lub[T](s: Set[VMap[T]]) = s.flatten.toMap
+  //FIXME: return the correct type
+  def lub[T](s: Set[VMap[T]]) = fromSet[T](s.flatten)
 }
 
 //TODO: Define CStruct as Option[VMap[Values]]

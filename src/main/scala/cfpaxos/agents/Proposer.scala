@@ -7,6 +7,8 @@ import cfpaxos.protocol._
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
+import akka.util.Timeout
+import scala.concurrent.duration._
 import concurrent.Promise
 import scala.util.{Success, Failure}
 import akka.pattern.ask
@@ -127,7 +129,12 @@ trait Proposer extends ActorLogging {
     newState.future
   }
 
-  def getRoundCount(state: ProposerMeta): Int = if(s.crnd < grnd) grnd.count + 1 else s.crnd.count + 1
+  //FIXME
+  def getRoundCount(state: Future[ProposerMeta]): Int = state onComplete {
+    case Success(s) => if(s.crnd < grnd) grnd.count + 1 else s.crnd.count + 1
+    case Failure(ex) => println(s"Fail to get round. Because of a ${ex.getMessage}\n")
+  }
+
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
     case NewLeader(coordinators: Set[ActorRef], until: Int) =>
@@ -138,22 +145,37 @@ trait Proposer extends ActorLogging {
         if (coordinators contains self) {
           println(s"Iam a LEADER! My id is: ${self.hashCode}\n")
           // Run configure phase (1)
-          // TODO: get cfproposers from some other actor (future)
-          // TODO: 1) Return a interval 2) ask for all learners and reduce the result
-          val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]]
-//          if(decided.isEmpty)
-            //exec phase1
-            // FINISH ME
-          val cfp: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]]
-          round = Round(getRoundCount, self, cfp)
-
+          // TODO: 1) Return a interval 2) ask for all learners and reduce the result  
+          implicit val timeout = Timeout(10 seconds)
+          val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
+          val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
+          log.info("STARTING PHASE1A\n")
+          cfpSet onComplete {
+            case Success(cfp) => 
+              println(s"CFPS: ${cfp}\n")
+              decided onComplete {
+                case Success(d) => 
+                  println(s"DECIDED: ${d}\n")
+                  if(d.isEmpty) {
+                    // Nothing learned yet
+                    val state = instances(0)
+                    grnd = Round(getRoundCount(state), Set(self), cfp)
+                    val msg = Configure(0, grnd)
+                    context.become(proposerBehavior(config, instances + (0 -> phase1A(msg, state, config))))
+                  } else {
+                    d.complement().iterateOverAll(i => {
+                      val state = instances(i)
+                      grnd = Round(getRoundCount(state), Set(self), cfp)
+                      val msg = Configure(i, grnd)
+                      context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
+                    })
+                  }
+                case Failure(ex) => println(s"Fail when try to get decided set. Because of a ${ex.getMessage}\n")
+              }
+            case Failure(ex) => println(s"Not get CFP set. Because of a ${ex.getMessage}\n")
 //        coordinators.foreach(_ ! HandleProposal(instance, round, Value(Some(cmd)))
 //        newLeader ! Configure(0, Round(round.count + 1, Set(newLeader), cfp))
-          log.info("STARTING PHASE1A\n")
-          
-          val state = instances(msg.instance)
-          context.become(proposerBehavior(config, instances + (msg.instance -> phase1A(msg, state, config))))
-
+          }
         }
       } else {
         log.info("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", config.acceptors.size, until)
@@ -194,6 +216,8 @@ trait Proposer extends ActorLogging {
     //TODO MemberRemoved
 
     case msg: MakeProposal =>
+      println(s"MSG : ${msg}\n")
+       /* //FIXME get correct instance
         val s = instances(msg.instance)
         println(s"Try starting round: ${s.isCompleted}")
         // TODO: Verify if instance has learned something
@@ -210,7 +234,7 @@ trait Proposer extends ActorLogging {
                     }
                     context.become(proposerBehavior(config, instances + (msg.instance -> Future.successful(state))))
           case Failure(ex) => println(s"Instance 0 not initiate. Because of a ${ex.getMessage}\n")
-        }
+        }*/
   }
 }
 

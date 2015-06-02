@@ -11,6 +11,8 @@ import akka.cluster.ClusterEvent._
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.Random
+import scala.concurrent.Future
 
 import cfpaxos.messages._
 import cfpaxos.agents._
@@ -104,7 +106,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
 
-    case GetCFPs => Set(config.proposers.toVector(Random.nextInt(config.proposers.size))) pipeTo sender
+    case GetCFPs => sender ! Future.successful(Set(config.proposers.toVector(Random.nextInt(config.proposers.size))))
 
     // TODO: Improve this
     case Terminated(ref) =>

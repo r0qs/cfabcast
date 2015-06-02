@@ -36,6 +36,9 @@ case class Configure(instance: Int, rnd: Round) extends Message
 // Message sent to start a new round
 case class MakeProposal(value: Values) extends Message
 
+case object GetCFPs extends Message
+case object WhatULearn extends Message
+
 /*
  * Cluster Messages
  */
