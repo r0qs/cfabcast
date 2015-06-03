@@ -130,11 +130,7 @@ trait Proposer extends ActorLogging {
   }
 
   //FIXME
-  def getRoundCount(state: Future[ProposerMeta]): Int = state onComplete {
-    case Success(s) => if(s.crnd < grnd) grnd.count + 1 else s.crnd.count + 1
-    case Failure(ex) => println(s"Fail to get round. Because of a ${ex.getMessage}\n")
-  }
-
+  def getRoundCount(state: ProposerMeta): Int = if(state.crnd < grnd) grnd.count + 1 else state.crnd.count + 1
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
     case NewLeader(coordinators: Set[ActorRef], until: Int) =>
@@ -159,15 +155,19 @@ trait Proposer extends ActorLogging {
                   if(d.isEmpty) {
                     // Nothing learned yet
                     val state = instances(0)
-                    grnd = Round(getRoundCount(state), Set(self), cfp)
-                    val msg = Configure(0, grnd)
-                    context.become(proposerBehavior(config, instances + (0 -> phase1A(msg, state, config))))
+                    state onSuccess {
+                      case s => grnd = Round(getRoundCount(s), Set(self), cfp)
+                                val msg = Configure(0, grnd)
+                                context.become(proposerBehavior(config, instances + (0 -> phase1A(msg, state, config))))
+                    }
                   } else {
                     d.complement().iterateOverAll(i => {
                       val state = instances(i)
-                      grnd = Round(getRoundCount(state), Set(self), cfp)
-                      val msg = Configure(i, grnd)
-                      context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
+                      state onSuccess {
+                        case s => grnd = Round(getRoundCount(s), Set(self), cfp)
+                                         val msg = Configure(i, grnd)
+                                         context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
+                      }
                     })
                   }
                 case Failure(ex) => println(s"Fail when try to get decided set. Because of a ${ex.getMessage}\n")

@@ -6,9 +6,6 @@ import cfpaxos.messages._
 import cfpaxos.protocol._
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.util.Random
-import akka.util.Timeout
-import scala.concurrent.duration._
 import concurrent.Promise
 import scala.util.{Success, Failure}
 
@@ -79,8 +76,7 @@ trait Learner extends ActorLogging {
     
     case WhatULearn =>
       // TODO: Send interval of learned instances
-      implicit val timeout = Timeout(10 seconds)
-      sender ! Future.successful(instancesLearned)
+      sender ! instancesLearned
 
     case msg: UpdateConfig =>
       context.become(learnerBehavior(msg.config, instances))
