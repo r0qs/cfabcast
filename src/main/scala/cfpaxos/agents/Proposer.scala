@@ -47,9 +47,9 @@ trait Proposer extends ActorLogging {
                     (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
                     newState.success(s.copy(pval = msg.value))
                   } else {
-                    log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", this.hashCode, msg, msg.rnd.cfproposers)
+                   /* log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", this.hashCode, msg, msg.rnd.cfproposers)
                     val cfps = msg.rnd.cfproposers
-                    cfps.toVector(Random.nextInt(cfps.size)) forward msg 
+                    cfps.toVector(Random.nextInt(cfps.size)) forward msg*/ 
                     newState.success(s) 
                   }
       case Failure(ex) => println(s"Propose promise execution fail, not update State. Because of a ${ex.getMessage}\n")
@@ -115,12 +115,15 @@ trait Proposer extends ActorLogging {
         if(s.prnd < msg.rnd) {
           log.info("Received: {} with state: {} \n",msg, s)
           println(s"MSG VALUE ${msg.value}")
+          grnd = msg.rnd
           if(msg.value.get.isEmpty) {
-            println(s"VALUE IS BOTTOM\n") 
+            println(s"VALUE IS BOTTOM\n")
+            println(s"UPDATE TO Round: ${msg.rnd} and VALUE: None\n")
             newState.success(s.copy(prnd = msg.rnd, pval = None))
           }
           else {
             println(s"VALUE NOT BOTTOM\n")
+            println(s"UPDATE TO Round: ${msg.rnd} and VALUE: ${msg.value}\n")
             newState.success(s.copy(prnd = msg.rnd, pval = msg.value))
           }
         } else newState.success(s)
@@ -129,19 +132,17 @@ trait Proposer extends ActorLogging {
     newState.future
   }
 
-  //FIXME
   def getRoundCount(state: ProposerMeta): Int = if(state.crnd < grnd) grnd.count + 1 else state.crnd.count + 1
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
-    case NewLeader(coordinators: Set[ActorRef], until: Int) =>
-      //TODO: get the next available instance and choose round based on self id
-      // 0,3,6; 1,4,7; 2,5,8
+    case NewLeader(newCoordinators: Set[ActorRef], until: Int) =>
+      coordinators = newCoordinators
       if(until <= config.acceptors.size) {
         log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", until)
-        if (coordinators contains self) {
+        if (newCoordinators contains self) {
           println(s"Iam a LEADER! My id is: ${self.hashCode}\n")
           // Run configure phase (1)
-          // TODO: 1) Return a interval 2) ask for all learners and reduce the result  
+          // TODO: ask for all learners and reduce the result  
           implicit val timeout = Timeout(10 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
@@ -152,29 +153,18 @@ trait Proposer extends ActorLogging {
               decided onComplete {
                 case Success(d) => 
                   println(s"DECIDED: ${d}\n")
-                  if(d.isEmpty) {
-                    // Nothing learned yet
-                    val state = instances(0)
+                  println(s"DECIDED COMPLEMENT: ${d.complement()}\n")
+                  d.complement().iterateOverAll(i => {
+                    val state = instances(i)
                     state onSuccess {
                       case s => grnd = Round(getRoundCount(s), Set(self), cfp)
-                                val msg = Configure(0, grnd)
-                                context.become(proposerBehavior(config, instances + (0 -> phase1A(msg, state, config))))
+                                val msg = Configure(i, grnd)
+                                context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
                     }
-                  } else {
-                    d.complement().iterateOverAll(i => {
-                      val state = instances(i)
-                      state onSuccess {
-                        case s => grnd = Round(getRoundCount(s), Set(self), cfp)
-                                         val msg = Configure(i, grnd)
-                                         context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
-                      }
-                    })
-                  }
+                  })
                 case Failure(ex) => println(s"Fail when try to get decided set. Because of a ${ex.getMessage}\n")
               }
             case Failure(ex) => println(s"Not get CFP set. Because of a ${ex.getMessage}\n")
-//        coordinators.foreach(_ ! HandleProposal(instance, round, Value(Some(cmd)))
-//        newLeader ! Configure(0, Round(round.count + 1, Set(newLeader), cfp))
           }
         }
       } else {
@@ -210,31 +200,51 @@ trait Proposer extends ActorLogging {
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
 
     // TODO: Do this in a sharedBehavior
-
     case msg: UpdateConfig =>
       context.become(proposerBehavior(msg.config, instances))
     //TODO MemberRemoved
 
     case msg: MakeProposal =>
       println(s"MSG : ${msg}\n")
-       /* //FIXME get correct instance
-        val s = instances(msg.instance)
-        println(s"Try starting round: ${s.isCompleted}")
-        // TODO: Verify if instance has learned something
-        s onComplete {
-          case Success(state) =>
-                    println(s"Starting round with state ${state} -- Proposal: ${msg.value}\n")
-                    println(s"CFP: ${msg.rnd.cfproposers}, COORDINATOR: ${msg.rnd.coordinator}, R: ${msg.rnd.count}\n")
-                    if (isCFProposerOf(msg.rnd)) {
-                      self ! Proposal(msg.instance, msg.rnd, Some(VMap(self -> msg.value)))
-                    }
-                    else {
-                      val cfps = msg.rnd.cfproposers
-                      cfps.toVector(Random.nextInt(cfps.size)) forward msg
-                    }
-                    context.become(proposerBehavior(config, instances + (msg.instance -> Future.successful(state))))
-          case Failure(ex) => println(s"Instance 0 not initiate. Because of a ${ex.getMessage}\n")
-        }*/
+      if(coordinators.nonEmpty) {
+        proposedIn = IRange.fromMap(instances)
+        println(s"PROPOSED IN: ${proposedIn}\n")
+        // FIXME: Do it for all not decided instances
+        // update the grnd
+        implicit val timeout = Timeout(10 seconds)
+        val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
+        decided onComplete {
+          case Success(d) =>
+            println(s"DECIDED RECEIVED: ${d}\n")
+            println(s"DECIDED COMPLEMENT: ${d.complement()}\n")
+            d.complement().iterateOverAll(instance => {
+              println(s"INSTANCE: ${instance}\n")
+              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(Round(), None, Round(), None, Map())))
+              println(s"Try starting round: ${s.isCompleted}")
+              s onComplete { 
+                case Success(state) => 
+                  println(s"Starting round with state ${state} -- Proposal: ${msg.value}\n")
+                  println(s"CFP: ${state.prnd.cfproposers}, COORDINATOR: ${state.prnd.coordinator}, R: ${state.prnd.count}\n")
+                  println(s"GRND: ${grnd} PRND: ${state.prnd} CRND: ${state.crnd}\n")
+                  var round = state.prnd
+                  if (grnd > state.prnd) {
+                    round = grnd
+                  }
+                  if (isCFProposerOf(round)) {
+                    self ! Proposal(instance, round, Some(VMap(self -> msg.value)))
+                  }
+                  else {
+                    val cfps = round.cfproposers
+                    cfps.toVector(Random.nextInt(cfps.size)) forward msg
+                  }
+                  context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
+                case Failure(ex) => println(s"Instance return: ${s.isCompleted}. Because of a ${ex.getMessage}\n")
+              }
+            })
+
+          case Failure(ex) => println(s"Fail when try to get decided set. Because of a ${ex.getMessage}\n")
+        }
+      }
   }
 }
 
@@ -243,7 +253,9 @@ class ProposerActor extends Actor with Proposer {
   // Greatest known round
   var grnd: Round = Round()
   
-  var coordinator: Option[ActorRef] = None
+  var proposedIn: IRange = IRange()
+
+  var coordinators: Set[ActorRef] = Set.empty[ActorRef]
 
   def isCoordinatorOf(round: Round): Boolean = (round.coordinator contains self)
 

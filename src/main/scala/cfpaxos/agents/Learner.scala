@@ -46,7 +46,9 @@ trait Learner extends ActorLogging {
                         val lubVals: VMap[Values] = VMap.lub(Slub)
                         log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
                         newState.success(s.copy(learned = Some(lubVals)))
-                        instancesLearned.insert(msg.asInstanceOf[Msg2B].instance)
+                        println(s"LEARNED IN INSTANCE ${m.instance} and ROUND : ${m.rnd}\n")
+                        instancesLearned = instancesLearned.insert(m.instance)
+                        println(s"INSTANCES LEARNED: ${instancesLearned}\n")
                       } 
                       else newState.success(s)
                     case _ => 

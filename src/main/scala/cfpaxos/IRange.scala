@@ -68,12 +68,19 @@ class IRange(self: List[Interval]) extends Iterable[Interval] {
       new IRange(makeComplement(self.head, self.tail))
     }
     else
-      IRange() insert -1
+      new IRange(List(Interval(start, -1)))
   }
 }
 
 object IRange {
   def apply() = new IRange(List())
+  
+  def fromMap[T](map: Map[Int, T]) : IRange = {
+    var r: IRange = IRange()
+    for ((k, v) <- map)
+      r = r insert k
+    r
+  }
 }
 
 class Interval(val from: Int, val to: Int) extends Ordered[Interval] {
@@ -81,9 +88,14 @@ class Interval(val from: Int, val to: Int) extends Ordered[Interval] {
 
   def contains(elem: Int) = (from <= elem && elem <= to)
 
-  def foreach[U](f: Int => U) = for(i <- from to to by 1) yield f(i)
+  def foreach[U](f: Int => U) = {
+    for(i <- from to to by 1) yield f(i)
+    if(to == -1 && from != -1) f(from)
+  }
 
   override def toString: String = s"[${from}, ${to}]"
+
+  def max = if(from >= to) from else to
 }
 
 object Interval {
