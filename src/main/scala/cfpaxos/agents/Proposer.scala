@@ -25,9 +25,10 @@ trait Proposer extends ActorLogging {
     state onComplete {
       case Success(s) =>
                   log.info("PHASE1A\n")
-                  if (isCoordinatorOf(msg.rnd) && s.crnd < msg.rnd) {
+                  if (isCoordinatorOf(msg.rnd) && crnd < msg.rnd) {
                     log.info("PHASE1A Iam Coordinator of: {} \n", msg.rnd)
-                    newState.success(ProposerMeta(s.prnd, s.pval, msg.rnd, None, s.quorum))
+                    newState.success(ProposerMeta(s.pval, None, s.quorum))
+                    self ! UpdatePRound(prnd, msg.rnd)
                     config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
                   } else newState.success(s)
       case Failure(ex) => println(s"1A Promise execution fail, not update State. Because of a ${ex.getMessage}\n")
@@ -41,7 +42,7 @@ trait Proposer extends ActorLogging {
     state onComplete {
       case Success(s) =>
                   log.info("PROPOSED MSG: {}\n MY STATE: {}\n", msg, s)
-                  if ((isCFProposerOf(msg.rnd) && s.prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
+                  if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
                     // Phase 2A for CFProposers
                     log.info("Iam CFProposer of: {} \n", msg.rnd)
                     (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
@@ -62,7 +63,7 @@ trait Proposer extends ActorLogging {
     val actorSender = sender
     state onComplete {
       case Success(s) =>
-        if (isCFProposerOf(msg.rnd) && s.prnd == msg.rnd && s.pval == None) {
+        if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) {
           log.info("PHASE2A Iam CFProposer of: {} \n", msg.rnd)
           if (msg.value.get(actorSender) == Nil) {
             log.info("PHASE2A Value of msg is NIL\n")
@@ -82,7 +83,7 @@ trait Proposer extends ActorLogging {
     state onComplete {
       case Success(s) =>
           log.info("QUORUM: {}, is COORDINATOR? {}\n", s.quorum, isCoordinatorOf(msg.rnd)) 
-          if (s.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && s.crnd == msg.rnd && s.cval == None) {
+          if (s.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && s.cval == None) {
             val msgs = s.quorum.values.asInstanceOf[Iterable[Msg1B]]
             println(s"MSGS: ${msgs}\n")
             val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
@@ -112,19 +113,22 @@ trait Proposer extends ActorLogging {
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
     state onComplete {
       case Success(s) =>
-        if(s.prnd < msg.rnd) {
+        if(prnd < msg.rnd) {
           log.info("Received: {} with state: {} \n",msg, s)
           println(s"MSG VALUE ${msg.value}")
-          grnd = msg.rnd
+          //FIXME! this is not thread-safe!!
+          //grnd = msg.rnd
           if(msg.value.get.isEmpty) {
             println(s"VALUE IS BOTTOM\n")
             println(s"UPDATE TO Round: ${msg.rnd} and VALUE: None\n")
-            newState.success(s.copy(prnd = msg.rnd, pval = None))
+            newState.success(s.copy(pval = None))
+            self ! UpdatePRound(msg.rnd, crnd)
           }
           else {
             println(s"VALUE NOT BOTTOM\n")
             println(s"UPDATE TO Round: ${msg.rnd} and VALUE: ${msg.value}\n")
-            newState.success(s.copy(prnd = msg.rnd, pval = msg.value))
+            newState.success(s.copy(pval = msg.value))
+            self ! UpdatePRound(msg.rnd, crnd)
           }
         } else newState.success(s)
       case Failure(ex) => println(s"2Prepare Promise execution fail, not update State. Because of a ${ex.getMessage}\n")
@@ -132,9 +136,19 @@ trait Proposer extends ActorLogging {
     newState.future
   }
 
-  def getRoundCount(state: ProposerMeta): Int = if(state.crnd < grnd) grnd.count + 1 else state.crnd.count + 1
+  def getRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
+    case msg: UpdatePRound =>
+      if(prnd < msg.prnd) {
+        prnd = msg.prnd
+        grnd = msg.prnd
+      }
+      if(crnd < msg.crnd) {
+        crnd = msg.crnd
+        grnd = msg.crnd
+      }  
+
     case NewLeader(newCoordinators: Set[ActorRef], until: Int) =>
       coordinators = newCoordinators
       if(until <= config.acceptors.size) {
@@ -155,12 +169,10 @@ trait Proposer extends ActorLogging {
                   println(s"DECIDED: ${d}\n")
                   println(s"DECIDED COMPLEMENT: ${d.complement()}\n")
                   d.complement().iterateOverAll(i => {
-                    val state = instances(i)
-                    state onSuccess {
-                      case s => grnd = Round(getRoundCount(s), Set(self), cfp)
-                                val msg = Configure(i, grnd)
-                                context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
-                    }
+                    val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None, Map())))
+                    grnd = Round(getRoundCount, Set(self), cfp)
+                    val msg = Configure(i, grnd)
+                    context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
                   })
                 case Failure(ex) => println(s"Fail when try to get decided set. Because of a ${ex.getMessage}\n")
               }
@@ -173,20 +185,20 @@ trait Proposer extends ActorLogging {
 
     case msg: Proposal =>
       log.info("Received PROPOSAL {} from {} and STARTING ROUND in round {}\n", msg, sender.hashCode, msg.rnd)
-      val state = instances(msg.instance)
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
       log.info("Actual CONFIG: {} and \nSTATE: {}\n", config, state.value)
       // TODO: Make this lazy and chain instances
       context.become(proposerBehavior(config, instances + (msg.instance -> propose(msg, state, config))))
 
     case msg: Msg2A =>
       log.info("Received MSG2A from {}\n", sender.hashCode)
-      val state = instances(msg.instance)
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(msg, state, config))))
 
     case msg: Msg1B =>
       log.info("Received MSG1B from {}\n", sender.hashCode)
       val actorSender = sender
-      val state: Future[ProposerMeta] = instances(msg.instance) 
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
       state onSuccess {
           case s =>
                 log.info("MSG1B add quorum: {}\n",s)
@@ -196,7 +208,7 @@ trait Proposer extends ActorLogging {
     // Phase2Prepare
     case msg: Msg2S =>
       log.info("Received MSG2S from {}\n", sender.hashCode)
-      val state = instances(msg.instance)
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
 
     // TODO: Do this in a sharedBehavior
@@ -219,15 +231,15 @@ trait Proposer extends ActorLogging {
             println(s"DECIDED COMPLEMENT: ${d.complement()}\n")
             d.complement().iterateOverAll(instance => {
               println(s"INSTANCE: ${instance}\n")
-              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(Round(), None, Round(), None, Map())))
+              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
               println(s"Try starting round: ${s.isCompleted}")
               s onComplete { 
                 case Success(state) => 
                   println(s"Starting round with state ${state} -- Proposal: ${msg.value}\n")
-                  println(s"CFP: ${state.prnd.cfproposers}, COORDINATOR: ${state.prnd.coordinator}, R: ${state.prnd.count}\n")
-                  println(s"GRND: ${grnd} PRND: ${state.prnd} CRND: ${state.crnd}\n")
-                  var round = state.prnd
-                  if (grnd > state.prnd) {
+                  println(s"CFP: ${prnd.cfproposers}, COORDINATOR: ${prnd.coordinator}, R: ${prnd.count}\n")
+                  println(s"GRND: ${grnd} PRND: ${prnd} CRND: ${crnd}\n")
+                  var round = prnd
+                  if (grnd > prnd) {
                     round = grnd
                   }
                   if (isCFProposerOf(round)) {
@@ -252,6 +264,10 @@ class ProposerActor extends Actor with Proposer {
   
   // Greatest known round
   var grnd: Round = Round()
+  // Proposer current round
+  var prnd: Round = Round()
+  // Coordinator current round
+  var crnd: Round = Round()
   
   var proposedIn: IRange = IRange()
 
@@ -261,5 +277,5 @@ class ProposerActor extends Actor with Proposer {
 
   def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
 
-  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(ProposerMeta(Round(), None, Round(), None, Map()))))
+  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(ProposerMeta(None, None, Map()))))
 }

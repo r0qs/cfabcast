@@ -63,13 +63,13 @@ trait Learner extends ActorLogging {
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]]): Receive = {
     case msg: Msg2A =>
       log.info("Received MSG2A from {}\n", sender.hashCode)
-      val state = instances(msg.instance)
+      val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set())))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
 
     case msg: Msg2B =>
       log.info("Received MSG2B from {}\n", sender.hashCode)
       val actorSender = sender
-      val state: Future[LearnerMeta] = instances(msg.instance)
+      val state: Future[LearnerMeta] = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set())))
       state onSuccess {
           case s =>
             println(s"SENDER of 2B: ${actorSender}\n")
