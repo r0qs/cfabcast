@@ -116,8 +116,6 @@ trait Proposer extends ActorLogging {
         if(prnd < msg.rnd) {
           log.info("Received: {} with state: {} \n",msg, s)
           println(s"MSG VALUE ${msg.value}")
-          //FIXME! this is not thread-safe!!
-          //grnd = msg.rnd
           if(msg.value.get.isEmpty) {
             println(s"VALUE IS BOTTOM\n")
             println(s"UPDATE TO Round: ${msg.rnd} and VALUE: None\n")
@@ -170,6 +168,7 @@ trait Proposer extends ActorLogging {
                   println(s"DECIDED COMPLEMENT: ${d.complement()}\n")
                   d.complement().iterateOverAll(i => {
                     val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None, Map())))
+                    // FIXME: This is not thread-safe
                     grnd = Round(getRoundCount, Set(self), cfp)
                     val msg = Configure(i, grnd)
                     context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
