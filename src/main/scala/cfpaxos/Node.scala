@@ -29,13 +29,13 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   for ((t, a) <- nodeAgents) {
     t match {
       case "proposer" => for (b <- 1 to a) { 
-        proposers += context.actorOf((Props[ProposerActor]), name=s"proposer-$b") 
+        proposers += context.actorOf((Props[ProposerActor]), name=s"proposer-$b-${self.hashCode}") 
       }
       case "acceptor" => for (b <- 1 to a) {
-        acceptors += context.actorOf((Props[AcceptorActor]), name=s"acceptor-$b") 
+        acceptors += context.actorOf((Props[AcceptorActor]), name=s"acceptor-$b-${self.hashCode}") 
       }
       case "learner"  => for (b <- 1 to a) {
-        learners  += context.actorOf((Props[LearnerActor]), name=s"learner-$b")
+        learners  += context.actorOf((Props[LearnerActor]), name=s"learner-$b-${self.hashCode}")
       }
     }
   }
@@ -53,12 +53,22 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
+  
+  var members = Map.empty[ActorRef, ClusterConfiguration]
 
   val console = context.actorOf(Props[ConsoleClient], "console")
 
   val leaderOracle = context.actorOf(Props[LeaderOracle], "leaderOracle")
 
+  val myConfig = ClusterConfiguration(proposers, acceptors, learners)
+
   def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "node*"
+
+  def notifyAll(config: ClusterConfiguration) = {
+    for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(config) }
+    for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(config) }
+    for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig(config) }
+  }
 
   def register(member: Member): Unit = {
     if (member.hasRole("cfpaxos")) {
@@ -67,7 +77,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     }
   }
 
-  def receive = configuration(ClusterConfiguration(proposers, acceptors, learners))
+  def receive = configuration(myConfig)
 
   def configuration(config: ClusterConfiguration): Receive = {
     case StartConsole => console ! StartConsole
@@ -84,6 +94,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     
     // Return the ActorRef of a member node
     case ActorIdentity(member: Member, Some(ref)) => 
+      context watch ref
       ref ! GiveMeAgents
 
     case ActorIdentity(member: Member, None) =>
@@ -91,28 +102,44 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     
     // Get the configuration of some member node
     case GiveMeAgents =>
-      sender ! GetAgents(config)
+      sender ! GetAgents(self, myConfig)
 
-    case GetAgents(newConfig: ClusterConfiguration) => 
+    case GetAgents(ref: ActorRef, newConfig: ClusterConfiguration) => 
       val actualConfig = config + newConfig
-      for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(actualConfig) }
-      for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(actualConfig) }
-      for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig(actualConfig) }
+      members += (ref -> newConfig)
+      notifyAll(actualConfig)
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
       //TODO: Do this only if proposers change
       leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
 
+
+    case UnreachableMember(member) =>
+      log.info("Member detected as unreachable: {}", member)
+//      notifyAll(actualConfig)
+//      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
+//      context.become(configuration(actualConfig))
+
+
+    case MemberRemoved(member, previousStatus) =>
+      log.info("Member is Removed: {} after {}", member.address, previousStatus)
+//      notifyAll(actualConfig)
+//      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
+//      context.become(configuration(actualConfig))
+
     case GetCFPs => sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
 
     // TODO: Improve this
     case Terminated(ref) =>
-      log.info("Actor {} terminated", ref)
-      /* FIXME:
-      proposers = proposers.filterNot(_ == ref)
-      acceptors = acceptors.filterNot(_ == ref)
-      learners = learners.filterNot(_ == ref)*/
+      log.info("Actor {} terminated, removing config: {}\n", ref, members(ref))
+      val newConfig = config - members(ref)
+      notifyAll(newConfig)
+      context.become(configuration(newConfig))
+      members -= ref
+      //proposers = proposers.filterNot(_ == ref)
+      //acceptors = acceptors.filterNot(_ == ref)
+      //learners = learners.filterNot(_ == ref)
   }
 }
 

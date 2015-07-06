@@ -48,7 +48,7 @@ trait Learner extends ActorLogging {
                         newState.success(s.copy(learned = Some(lubVals)))
                         println(s"LEARNED IN INSTANCE ${m.instance} and ROUND : ${m.rnd}\n")
                         instancesLearned = instancesLearned.insert(m.instance)
-                        println(s"INSTANCES LEARNED: ${instancesLearned}\n")
+                        println(s"INSTANCES LEARNED: ${instancesLearned} my config: ${config}\n")
                       } 
                       else newState.success(s)
                     case _ => 
@@ -78,6 +78,7 @@ trait Learner extends ActorLogging {
     
     case WhatULearn =>
       // TODO: Send interval of learned instances
+      println(s"LEARNED until now: ${instances} \n")
       sender ! instancesLearned
 
     case msg: UpdateConfig =>

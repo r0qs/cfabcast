@@ -17,6 +17,12 @@ sealed trait ClusterConfiguration {
       this.proposers ++ that.proposers,
       this.acceptors ++ that.acceptors,
       this.learners ++ that.learners)
+
+  def -(that: ClusterConfiguration) =
+    ClusterConfiguration(
+      this.proposers -- that.proposers,
+      this.acceptors -- that.acceptors,
+      this.learners -- that.learners)
 }
 
 object ClusterConfiguration {

@@ -47,7 +47,7 @@ case class UpdateARound(rnd: Round) extends Message
  * Cluster Messages
  */
 case class UpdateConfig(config: ClusterConfiguration) extends Message
-case class GetAgents(config: ClusterConfiguration) extends Message
+case class GetAgents(ref: ActorRef, config: ClusterConfiguration) extends Message
 case object GiveMeAgents extends Message
 
 /*
