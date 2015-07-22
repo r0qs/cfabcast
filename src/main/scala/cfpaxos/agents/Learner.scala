@@ -11,7 +11,7 @@ import scala.util.{Success, Failure}
 
 trait Learner extends ActorLogging {
   this: LearnerActor =>
-  
+
   override def preStart(): Unit = {
     log.info("Learner ID: {} UP on {}\n", self.hashCode, self.path)
   }
@@ -46,7 +46,7 @@ trait Learner extends ActorLogging {
                         val lubVals: VMap[Values] = VMap.lub(Slub)
                         log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
                         newState.success(s.copy(learned = Some(lubVals)))
-                        println(s"LEARNED IN INSTANCE ${m.instance} and ROUND : ${m.rnd}\n")
+                        println(s"LEARNED : ${lubVals} IN INSTANCE ${m.instance} and ROUND : ${m.rnd}\n")
                         instancesLearned = instancesLearned.insert(m.instance)
                         println(s"INSTANCES LEARNED: ${instancesLearned} my config: ${config}\n")
                       } 

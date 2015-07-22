@@ -16,3 +16,6 @@
 * Generalized Consensus
 * Multicoordinated Generalized Consensus
 * Byzantine ??
+
+= Optimizations
+- Monitor whether the Collision-fast Proposers are proposing many bottom messages, if so, inform the coordinator to start a new round with a new set of Collision-fast Proposers

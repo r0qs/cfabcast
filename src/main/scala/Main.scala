@@ -15,6 +15,7 @@ object Main {
       withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfpaxos, proposer, acceptor, learner]")).
       withFallback(ConfigFactory.load())
     val system = ActorSystem("ClusterSystem", config)
+    //TODO: Use Akka configuration: http://doc.akka.io/docs/akka/2.3.12/general/configuration.html
     val node = system.actorOf(Node.props(2, Map("proposer" -> 1, "acceptor" -> 1, "learner" -> 1)), "node")
     node ! StartConsole
   }

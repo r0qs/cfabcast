@@ -84,8 +84,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     // FIXME: Remove this awful test
     case Command(cmd) =>
-      // FIXME: Send proposal to cfps set
-      proposers.foreach(_ ! MakeProposal(Value(Some(cmd))))
+      proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(cmd)))
 
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)
@@ -111,7 +110,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
       //TODO: Do this only if proposers change
-      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
+      if (waitFor == actualConfig.acceptors.size)
+        leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
 
 
@@ -137,9 +137,6 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       notifyAll(newConfig)
       context.become(configuration(newConfig))
       members -= ref
-      //proposers = proposers.filterNot(_ == ref)
-      //acceptors = acceptors.filterNot(_ == ref)
-      //learners = learners.filterNot(_ == ref)
   }
 }
 

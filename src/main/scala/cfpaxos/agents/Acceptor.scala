@@ -113,6 +113,7 @@ trait Acceptor extends ActorLogging {
       
 }
 
+//TODO: Make this persistent: http://doc.akka.io/docs/akka/2.3.11/scala/persistence.html
 class AcceptorActor extends Actor with Acceptor {
   var rnd: Round = Round()
   def receive = acceptorBehavior(ClusterConfiguration(), Map(0 -> Future.successful(AcceptorMeta(Round(), None, Map()))))

@@ -56,7 +56,6 @@ case object GiveMeAgents extends Message
 case class MemberChange(config: ClusterConfiguration, nodeProposers: Set[ActorRef], waitFor: Int) extends Message
 case class NewLeader(coordinators: Set[ActorRef], until: Int) extends Message
 
-
 /*
  * Console Messages
  */
