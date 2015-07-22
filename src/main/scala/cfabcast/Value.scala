@@ -1,4 +1,4 @@
-package cfpaxos
+package cfabcast
 
 import collection.mutable._
 import scala.collection.mutable.{Builder, MapBuilder}

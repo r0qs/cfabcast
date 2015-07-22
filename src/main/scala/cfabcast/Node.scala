@@ -1,4 +1,4 @@
-package cfpaxos
+package cfabcast
 
 import scala.collection.immutable.Set
 import akka.cluster.{ Member, Cluster }
@@ -12,8 +12,8 @@ import com.typesafe.config.ConfigFactory
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 
-import cfpaxos.messages._
-import cfpaxos.agents._
+import cfabcast.messages._
+import cfabcast.agents._
 /*
    * Cluster node
  * This node will handle the request of some client command
@@ -71,7 +71,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   }
 
   def register(member: Member): Unit = {
-    if (member.hasRole("cfpaxos")) {
+    if (member.hasRole("cfabcast")) {
       nodes += member.address
       context.actorSelection(nodesPath(member.address)) ! Identify(member)
     }

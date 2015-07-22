@@ -1,9 +1,9 @@
-package cfpaxos.protocol
+package cfabcast.protocol
 
 import akka.actor.ActorRef
 
-import cfpaxos._
-import cfpaxos.messages._
+import cfabcast._
+import cfabcast.messages._
 
 private[protocol] trait StateMetadata extends Serializable {
   abstract class Metadata {

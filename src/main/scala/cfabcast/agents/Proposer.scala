@@ -1,9 +1,9 @@
-package cfpaxos.agents
+package cfabcast.agents
 
 import akka.actor._
-import cfpaxos._
-import cfpaxos.messages._
-import cfpaxos.protocol._
+import cfabcast._
+import cfabcast.messages._
+import cfabcast.protocol._
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random

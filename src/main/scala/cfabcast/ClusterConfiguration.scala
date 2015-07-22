@@ -1,7 +1,7 @@
-package cfpaxos
+package cfabcast
 
 import akka.actor.ActorRef
-import cfpaxos._
+import cfabcast._
 
 sealed trait ClusterConfiguration {
   val quorumSize: Int

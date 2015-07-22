@@ -1,9 +1,9 @@
-package cfpaxos
+package cfabcast
 
 import akka.actor.Actor
 
-import cfpaxos._
-import cfpaxos.messages._
+import cfabcast._
+import cfabcast.messages._
 
 class ConsoleClient extends Actor {
   

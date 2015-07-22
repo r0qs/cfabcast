@@ -1,4 +1,4 @@
-package cfpaxos
+package cfabcast
 
 import akka.actor.ActorRef
 

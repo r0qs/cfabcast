@@ -1,4 +1,4 @@
-package cfpaxos
+package cfabcast
 
 /*
  * Interval of instances

@@ -1,8 +1,8 @@
-package cfpaxos.messages
+package cfabcast.messages
 
 import akka.actor.ActorRef
 import akka.cluster.Member
-import cfpaxos._
+import cfabcast._
 
 /**
  * Define protocol messages for collision-fast paxos.
