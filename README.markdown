@@ -1,4 +1,4 @@
-# CFPaxos
+# CFABCast
 
 This is a simple implementation of Collision-fast Atomic Broadcast protocol in Scala, based on this [article].
 
