@@ -28,7 +28,7 @@ trait Acceptor extends ActorLogging {
                     self ! UpdateARound(msg.rnd)
                   }
                 } else newState.success(s)
-      case Failure(ex) => println(s"2B1 Promise fail, not update State. Because of a ${ex.getMessage}\n")
+      case Failure(ex) => log.info("2B1 Promise fail, not update State. Because of a {}\n", ex.getMessage)
 
     }
     newState.future
@@ -37,6 +37,7 @@ trait Acceptor extends ActorLogging {
   def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     val actorSender = sender //FIXME!!!!! See below. 
+    config.learners.head ! WhatValuesULearn
     state onComplete {
       case Success(s) => // Cond 2
               //FIXME: actorSender trigger: "java.util.NoSuchElementException: key not found" in line below,
@@ -53,7 +54,7 @@ trait Acceptor extends ActorLogging {
                 newState.success(s.copy(vrnd = msg.rnd, vval = Some(value)))
                 self ! UpdateARound(msg.rnd)
               } else newState.success(s)
-      case Failure(ex) => println(s"2B2 Promise fail, not update State. Because of a ${ex.getMessage}\n")
+      case Failure(ex) => log.error(s"2B2 Promise fail, not update State. Because of a {}\n", ex.getMessage)
     }
     newState.future
   }
@@ -69,7 +70,7 @@ trait Acceptor extends ActorLogging {
                   self ! UpdateARound(msg.rnd)
                 }
                 newState.success(s)
-      case Failure(ex) => println(s"1B Promise fail, not update State. Because of a ${ex.getMessage}\n")
+      case Failure(ex) => log.error("1B Promise fail, not update State. Because of a {}\n", ex.getMessage)
     }
     newState.future
   }
@@ -81,7 +82,6 @@ trait Acceptor extends ActorLogging {
     // For this instance and round the sender need to be a coordinator
     // Make this verification for all possible instances
     case msg: Msg1A =>
-      log.info("Received MSG1A from {}\n", sender.hashCode)
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None, Map())))
       context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(msg, state, config))))
 
@@ -95,13 +95,11 @@ trait Acceptor extends ActorLogging {
     // Phase2B
     // FIXME: Execute this once!!
     case msg: Msg2S =>
-     log.info("Received Msg2S from {}\n", sender.hashCode)
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None, Map())))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B1(msg, state, config))))
     
     // FIXME: data.value(sender) != Nil -> how to unique identify actors? using actorref?
     case msg: Msg2A =>
-      log.info("Received MSG2A from {}\n", sender.hashCode)
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None, Map())))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(msg, state, config))))
     

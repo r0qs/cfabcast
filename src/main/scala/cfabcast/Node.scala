@@ -116,14 +116,14 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
 
     case UnreachableMember(member) =>
-      log.info("Member detected as unreachable: {}", member)
+      log.info("Member detected as unreachable: {}\n", member)
 //      notifyAll(actualConfig)
 //      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
 //      context.become(configuration(actualConfig))
 
 
     case MemberRemoved(member, previousStatus) =>
-      log.info("Member is Removed: {} after {}", member.address, previousStatus)
+      log.info("Member is Removed: {} after {}\n", member.address, previousStatus)
 //      notifyAll(actualConfig)
 //      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
 //      context.become(configuration(actualConfig))

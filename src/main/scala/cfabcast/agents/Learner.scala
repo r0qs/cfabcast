@@ -8,6 +8,7 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import concurrent.Promise
 import scala.util.{Success, Failure}
+import akka.pattern.pipe
 
 trait Learner extends ActorLogging {
   this: LearnerActor =>
@@ -16,70 +17,63 @@ trait Learner extends ActorLogging {
     log.info("Learner ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def learn(msg: Message, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
+  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
     val newState = Promise[LearnerMeta]()
-    val actorSender = sender
     state onComplete {
       case Success(s) =>
                 // TODO: verify learner round!?
-                msg match {
-                    case m: Msg2A =>
-                      if (m.value.get(actorSender) == Nil && m.rnd.cfproposers(actorSender)){
-                        newState.success(s.copy(P = s.P + actorSender))
-                        println(s"FAST for ${actorSender.hashCode}\n")
-                      } else newState.success(s)
-                    case m: Msg2B =>
-                      println(s"LEARNER QUORUM: ${s.quorum}\n")
-                      if (s.quorum.size >= config.quorumSize) {
-                        var msgs = s.quorum.values.asInstanceOf[Iterable[Msg2B]]
-                        //.toSet ++ Set(m)
-                        println(s"MSGS 2B RECEIVED: ${msgs}")
-                        val Q2bVals = msgs.map(a => a.value).toSet.flatMap( (e: Option[VMap[Values]]) => e)
-                        //Q2bVals += m.value.get
-                        println(s"Q2bVals: ${Q2bVals}\n P ====> ${s.P}\n")
-                        var value = VMap[Values]()
-                        for (p <- s.P) value += (p -> Nil)
-                        println(s"GLB: ${VMap.glb(Q2bVals)} VALUE: ${value}\n")
-                        val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
-                        // TODO: Speculative execution
-                        val Slub: Set[VMap[Values]] = Set(s.learned.get, w.get)
-                        val lubVals: VMap[Values] = VMap.lub(Slub)
-                        log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
-                        newState.success(s.copy(learned = Some(lubVals)))
-                        println(s"LEARNED : ${lubVals} IN INSTANCE ${m.instance} and ROUND : ${m.rnd}\n")
-                        instancesLearned = instancesLearned.insert(m.instance)
-                        println(s"INSTANCES LEARNED: ${instancesLearned} my config: ${config}\n")
-                      } 
-                      else newState.success(s)
-                    case _ => 
-                      println("Unknown message\n")
-                      newState.success(s)
-                }
-      case Failure(ex) => println(s"Learn Promise fail, not update State. Because of a ${ex.getMessage}\n")
+                val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
+                if (quorum.size >= config.quorumSize) {
+                  var msgs = quorum.values.asInstanceOf[Iterable[Msg2B]]
+                  //.toSet ++ Set(m)
+                  val Q2bVals = msgs.map(a => a.value).toSet.flatMap( (e: Option[VMap[Values]]) => e)
+                  //Q2bVals += m.value.get
+                  var value = VMap[Values]()
+                  for (p <- pPerInstance.getOrElse(msg.instance, scala.collection.mutable.Set())) value += (p -> Nil)
+                  //println(s"GLB: ${VMap.glb(Q2bVals)} VALUE: ${value}\n")
+                  val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
+                  // TODO: Speculative execution
+                  val Slub: Set[VMap[Values]] = Set(s.learned.get, w.get)
+                  val lubVals: VMap[Values] = VMap.lub(Slub)
+                  log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
+                  newState.success(s.copy(learned = Some(lubVals)))
+                  instancesLearned = instancesLearned.insert(msg.instance)
+                  log.info("INSTANCES LEARNED: {}\n", instancesLearned)
+                } 
+                else newState.success(s)
+      case Failure(ex) => log.error("Learn Promise fail, not update State. Because of a {}\n", ex.getMessage)
     }
     newState.future
   }
 
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]]): Receive = {
     case msg: Msg2A =>
-      log.info("Received MSG2A from {}\n", sender.hashCode)
+//      log.info("Received MSG2A from {}\n", sender.hashCode)
+      if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
+        pPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Set())
+        pPerInstance(msg.instance) += sender
+      }
+
+    case msg: Msg2B =>
+      val actorSender = sender
+      // FIXME: Sometimes not return the correct state
+      quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
+      quorumPerInstance(msg.instance) += (actorSender -> msg)
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set())))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
 
-    case msg: Msg2B =>
-      log.info("Received MSG2B from {}\n", sender.hashCode)
-      val actorSender = sender
-      val state: Future[LearnerMeta] = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set())))
-      state onSuccess {
-          case s =>
-            println(s"SENDER of 2B: ${actorSender}\n")
-            context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, Future.successful(s.copy(quorum =  s.quorum + (actorSender -> msg))), config))))
-      }
-    
+
     case WhatULearn =>
       // TODO: Send interval of learned instances
-      println(s"LEARNED until now: ${instances} \n")
       sender ! instancesLearned
+    
+    case WhatValuesULearn =>
+      log.info("LEARNED INSTANCES: {}\n", instances)
+      instances.foreach({case (instance, state) => 
+        state onSuccess {
+          case s => log.info("In {} I learn {}\n", instance, s.learned)
+        }
+      })
 
     case msg: UpdateConfig =>
       context.become(learnerBehavior(msg.config, instances))
@@ -88,8 +82,10 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor extends Actor with Learner {
-  
+
   var instancesLearned: IRange = IRange()
+  var quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, Message]]()
+  var pPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Set[ActorRef]]()
 
   def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set()))))
 }

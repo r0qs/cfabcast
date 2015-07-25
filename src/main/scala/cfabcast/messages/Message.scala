@@ -39,9 +39,11 @@ case class MakeProposal(value: Values) extends Message
 case object GetCFPs extends Message
 
 case object WhatULearn extends Message
+case object WhatValuesULearn extends Message
 
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 case class UpdateARound(rnd: Round) extends Message
+
 
 /*
  * Cluster Messages
