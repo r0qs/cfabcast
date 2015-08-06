@@ -38,12 +38,13 @@ case class MakeProposal(value: Values) extends Message
 
 case object GetCFPs extends Message
 
+case class Learned(learned: Option[VMap[Values]]) extends Message
+
 case object WhatULearn extends Message
 case object WhatValuesULearn extends Message
 
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 case class UpdateARound(rnd: Round) extends Message
-
 
 /*
  * Cluster Messages
@@ -64,3 +65,12 @@ case class NewLeader(coordinators: Set[ActorRef], until: Int) extends Message
 sealed class ConsoleMsg
 case object StartConsole extends ConsoleMsg
 case class Command(cmd: String) extends ConsoleMsg
+
+/*
+ * Client Messages
+ */
+sealed class CFABCastMessage
+case class Broadcast(message: Array[Byte]) extends CFABCastMessage
+case class Delivery(message: Array[Byte])  extends CFABCastMessage {
+  def getObject: Array[Byte] = message
+}

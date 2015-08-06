@@ -26,6 +26,9 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   var acceptors = Set.empty[ActorRef]
   var learners  = Set.empty[ActorRef]
 
+  var clients = Set.empty[ActorRef]
+  var servers = Set.empty[ActorRef]
+
   // Creates actors on this node
   for ((t, a) <- nodeAgents) {
     t match {
@@ -72,17 +75,9 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   }
 
   def register(member: Member): Unit = {
-    //FIXME This may not be a very reliable approach
-    nodes += member.address
-    
-    if (member.hasRole("cfabcast")) {
+    if (member.hasRole("cfabcast") || member.hasRole("server") || member.hasRole("client") ) {
+      nodes += member.address
       context.actorSelection(nodesPath(member.address)) ! Identify(member)
-    }
-    else if (member.hasRole("server")) {
-      log.info("Adding a Server Listener on: {}\n", member.address)
-    }
-    else if (member.hasRole("client")) {
-      log.info("Adding a Client Listener on: {}\n", member.address)      
     }
   }
 
@@ -97,8 +92,21 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       if (cmd == "learn")
         learners.head ! WhatValuesULearn
       else 
-        proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(cmd.getBytes)))
+        self ! Broadcast(cmd.getBytes)
+        //proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(cmd.getBytes)))
 
+    case Broadcast(message) =>
+      proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(message)))
+  
+    case Learned(learnedValues) =>
+      val vmap = learnedValues.get
+      if(vmap == None)
+        log.info("Nothing learned yet! VMAP is BOTTOM! = {} \n", vmap)
+      else {
+        log.info("Learned VMAP = {} \n", vmap)
+        // TODO: send response to clients
+        vmap.foreach({ case (_, value) => if(value != Nil) clients ! Delivery(value) })
+      }
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)
 
@@ -110,10 +118,12 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
         context watch ref
         ref ! GiveMeAgents
       }
-      else if (member.hasRole("server")) {
+      if (member.hasRole("server")) {
+        servers += ref
         log.info("Adding a Server Listener on: {}\n", member.address)
       }
-      else if (member.hasRole("client")) {
+      if (member.hasRole("client")) {
+        clients += ref
         log.info("Adding a Client Listener on: {}\n", member.address)      
       }
 
@@ -146,6 +156,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case MemberRemoved(member, previousStatus) =>
       log.info("Member is Removed: {} after {}\n", member.address, previousStatus)
       nodes -= member.address
+      //TODO identify when a client or a server disconnect and remove them.
 
     case GetCFPs => sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
 

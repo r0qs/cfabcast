@@ -39,6 +39,9 @@ trait Learner extends ActorLogging {
                   newState.success(s.copy(learned = Some(lubVals)))
                   instancesLearned = instancesLearned.insert(msg.instance)
                   log.info("INSTANCES LEARNED: {}\n", instancesLearned)
+
+                  // Notify what was learned
+                  context.parent ! Learned(s.copy(learned = Some(lubVals)).learned)
                 } 
                 else newState.success(s)
       case Failure(ex) => log.error("Learn Promise fail, not update State. Because of a {}\n", ex.getMessage)
