@@ -12,18 +12,26 @@ import scala.collection.GenTraversableOnce
 abstract class Values extends Serializable {
   type T
   val value: T
-//  override def toString: String = value.toString
+  
+  override def toString: String = value.toString
 }
 
 class Value private extends Values {
   type T = Option[Array[Byte]]
   val value: T = None
+  
   override def equals(other : Any) : Boolean = other match {
     case that : Value => (this.canEqual(that) && java.util.Arrays.equals(this.value.get, that.value.get))
 //    (that.canEqual(this) && this.value == that.value)
     case _ => false
   }
+  
   def canEqual(other : Any) : Boolean = other.isInstanceOf[Value]
+  
+  override def toString: String = {
+    val v = this.value.getOrElse(Array[Byte]())
+    if(v == null) "None" else java.util.Arrays.asList(v:_*).toString
+  }
 }
 
 object Value {
@@ -35,6 +43,7 @@ object Value {
 object Nil extends Values{
   type T = Option[Array[Byte]]
   val value: T = Some(Array[Byte]())
+  override def toString: String = "Nil"
 }
 
 // Map a ActorRef identifier to a Value
