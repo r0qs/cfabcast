@@ -14,8 +14,9 @@ import scala.util.Random
 
 import cfabcast.messages._
 import cfabcast.agents._
+
 /*
-   * Cluster node
+ * Cluster node
  * This node will handle the request of some client command
  */
 class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorLogging {
@@ -71,9 +72,17 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   }
 
   def register(member: Member): Unit = {
+    //FIXME This may not be a very reliable approach
+    nodes += member.address
+    
     if (member.hasRole("cfabcast")) {
-      nodes += member.address
       context.actorSelection(nodesPath(member.address)) ! Identify(member)
+    }
+    else if (member.hasRole("server")) {
+      log.info("Adding a Server Listener on: {}\n", member.address)
+    }
+    else if (member.hasRole("client")) {
+      log.info("Adding a Client Listener on: {}\n", member.address)      
     }
   }
 
@@ -84,7 +93,11 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     // FIXME: Remove this awful test
     case Command(cmd) =>
-      proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(cmd)))
+      log.info("Received COMMAND {} \n", cmd)
+      if (cmd == "learn")
+        learners.head ! WhatValuesULearn
+      else 
+        proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(cmd.getBytes)))
 
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)
@@ -92,12 +105,20 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case MemberUp(member) if !(nodes.contains(member.address)) => register(member)
     
     // Return the ActorRef of a member node
-    case ActorIdentity(member: Member, Some(ref)) => 
-      context watch ref
-      ref ! GiveMeAgents
+    case ActorIdentity(member: Member, Some(ref)) =>
+      if (member.hasRole("cfabcast")) {
+        context watch ref
+        ref ! GiveMeAgents
+      }
+      else if (member.hasRole("server")) {
+        log.info("Adding a Server Listener on: {}\n", member.address)
+      }
+      else if (member.hasRole("client")) {
+        log.info("Adding a Client Listener on: {}\n", member.address)      
+      }
 
     case ActorIdentity(member: Member, None) =>
-      log.info("Unable to find any protocol actor on node: {}\n", member.address)
+      log.info("Unable to find any actor on node: {}\n", member.address)
     
     // Get the configuration of some member node
     case GiveMeAgents =>
@@ -124,9 +145,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     case MemberRemoved(member, previousStatus) =>
       log.info("Member is Removed: {} after {}\n", member.address, previousStatus)
-//      notifyAll(actualConfig)
-//      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
-//      context.become(configuration(actualConfig))
+      nodes -= member.address
 
     case GetCFPs => sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
 
@@ -137,6 +156,9 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       notifyAll(newConfig)
       context.become(configuration(newConfig))
       members -= ref
+
+    case _ =>
+      log.info("A unknown message received!\n")
   }
 }
 

@@ -191,7 +191,7 @@ trait Proposer extends ActorLogging {
     //TODO MemberRemoved
 
     case msg: MakeProposal =>
-      instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
+     // instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
       // TODO: Get the coordinators from actual round
       if(prnd.coordinator.nonEmpty) {
         proposedIn = IRange.fromMap(instances)

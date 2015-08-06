@@ -17,6 +17,8 @@ object Main {
     val system = ActorSystem("ClusterSystem", config)
     //TODO: Use Akka configuration: http://doc.akka.io/docs/akka/2.3.12/general/configuration.html
     val node = system.actorOf(Node.props(2, Map("proposer" -> 1, "acceptor" -> 1, "learner" -> 1)), "node")
+
+    //For test:
     node ! StartConsole
   }
 }

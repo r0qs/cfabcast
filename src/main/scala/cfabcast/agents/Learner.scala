@@ -48,7 +48,6 @@ trait Learner extends ActorLogging {
 
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]]): Receive = {
     case msg: Msg2A =>
-//      log.info("Received MSG2A from {}\n", sender.hashCode)
       if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
         pPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Set())
         pPerInstance(msg.instance) += sender

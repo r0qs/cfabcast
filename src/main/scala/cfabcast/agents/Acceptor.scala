@@ -37,7 +37,6 @@ trait Acceptor extends ActorLogging {
   def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     val actorSender = sender //FIXME!!!!! See below. 
-    config.learners.head ! WhatValuesULearn
     state onComplete {
       case Success(s) => // Cond 2
               //FIXME: actorSender trigger: "java.util.NoSuchElementException: key not found" in line below,
