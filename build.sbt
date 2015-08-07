@@ -1,10 +1,14 @@
 name := "CFABCast"
 
-version := "0.1"
+organization := "cfabcast"
+
+version := "0.1-SNAPSHOT"
 
 scalaVersion := "2.11.6"
 
-resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
+resolvers ++= Seq(
+  "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
+)
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % "2.3.11",
@@ -17,3 +21,17 @@ libraryDependencies ++= Seq(
 )
 
 org.scalastyle.sbt.ScalastylePlugin.Settings
+
+publishMavenStyle := true
+publishArtifact in (Compile, packageBin) := true
+publishArtifact in (Compile, packageDoc) := false
+publishArtifact in (Compile, packageSrc) := false
+publishArtifact in (Test, packageBin)    := false
+
+publishTo <<= version { (v: String) =>
+  if (v.trim.endsWith("-SNAPSHOT"))
+    Some(Resolver.file("Snapshots", file("../maven-repo/snapshots/")))
+  else
+    Some(Resolver.file("Releases", file("../maven-repo/releases/")))
+}
+
