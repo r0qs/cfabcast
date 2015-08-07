@@ -105,7 +105,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       else {
         log.info("Learned VMAP = {} \n", vmap)
         // TODO: send response to clients
-        vmap.foreach({ case (_, value) => if(value != Nil) clients ! Delivery(value) })
+        clients.foreach( cli => vmap.foreach({ case (_, value) => if(value != Nil) cli ! Delivery(value.asInstanceOf[Array[Byte]]) }) )
       }
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)

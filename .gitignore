@@ -3,4 +3,5 @@
 .history
 target/
 sbt/
-project/
+project/project/
+project/target/
