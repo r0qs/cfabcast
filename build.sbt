@@ -23,10 +23,14 @@ libraryDependencies ++= Seq(
 org.scalastyle.sbt.ScalastylePlugin.Settings
 
 publishMavenStyle := true
+
 publishArtifact in (Compile, packageBin) := true
-publishArtifact in (Compile, packageDoc) := false
+
 publishArtifact in (Compile, packageSrc) := false
-publishArtifact in (Test, packageBin)    := false
+
+publishArtifact in (Compile, packageDoc) := false
+
+publishArtifact in (Test, packageBin) := false
 
 publishTo <<= version { (v: String) =>
   if (v.trim.endsWith("-SNAPSHOT"))
