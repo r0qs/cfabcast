@@ -19,7 +19,7 @@ object Main {
     val node = system.actorOf(Node.props(2, Map("proposer" -> 1, "acceptor" -> 1, "learner" -> 1)), "node")
 
     //For test:
-    //node ! StartConsole
+    node ! StartConsole
   }
 }
 

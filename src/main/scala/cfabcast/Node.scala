@@ -9,11 +9,13 @@ import akka.actor.ActorLogging
 import akka.actor.Terminated
 import akka.cluster.ClusterEvent._
 import com.typesafe.config.ConfigFactory
+import akka.actor.ExtendedActorSystem
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 
 import cfabcast.messages._
 import cfabcast.agents._
+import cfabcast.serialization.CFABCastSerializer
 
 /*
  * Cluster node
@@ -28,6 +30,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
   var clients = Set.empty[ActorRef]
   var servers = Set.empty[ActorRef]
+
+  val serializer = new CFABCastSerializer(context.system.asInstanceOf[ExtendedActorSystem])
 
   // Creates actors on this node
   for ((t, a) <- nodeAgents) {
@@ -45,9 +49,10 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   }
 
   // Subscribe to cluster changes, MemberUp
-  // TODO: handle more cluster events, like unreacheble
   override def preStart(): Unit = {
     cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
+    //FIXME remove this ("two" msg test)
+    //clients += self
   }
 
   // Unsubscribe when stop to re-subscripe when restart
@@ -66,8 +71,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
   val myConfig = ClusterConfiguration(proposers, acceptors, learners)
 
-  def nodesPath(nodeAddress: Address): ActorPath = RootActorPath(nodeAddress) / "user" / "node*"
-
+  def memberPath(address: Address): ActorPath = RootActorPath(address) / "user" / "*"
+  
   def notifyAll(config: ClusterConfiguration) = {
     for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(config) }
     for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(config) }
@@ -75,9 +80,9 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   }
 
   def register(member: Member): Unit = {
-    if (member.hasRole("cfabcast") || member.hasRole("server") || member.hasRole("client") ) {
+    if(member.hasRole("cfabcast") || member.hasRole("server") || member.hasRole("client")) {
       nodes += member.address
-      context.actorSelection(nodesPath(member.address)) ! Identify(member)
+      context.actorSelection(memberPath(member.address)) ! Identify(member)
     }
   }
 
@@ -87,25 +92,42 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case StartConsole => console ! StartConsole
 
     // FIXME: Remove this awful test
-    case Command(cmd) =>
+    case Command(cmd: String) =>
       log.info("Received COMMAND {} \n", cmd)
-      if (cmd == "learn")
-        learners.head ! WhatValuesULearn
-      else 
-        self ! Broadcast(cmd.getBytes)
+      cmd match {
+        case "learn" => learners.head ! WhatValuesULearn
+        case "two" => 
+          config.proposers.zipWithIndex.foreach { case (ref, i) =>
+            ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
+          }
+        case _ => self ! Broadcast(serializer.toBinary(cmd))
         //proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(cmd.getBytes)))
+      }
+    case Broadcast(data) =>
+      if(waitFor <= config.acceptors.size) {
+        log.info("Receive proposal: {}\n", serializer.fromBinary(data))
+        proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
+      }
+      else
+        log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...\n", acceptors.size)
 
-    case Broadcast(message) =>
-      proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(message)))
-  
     case Learned(learnedValues) =>
       val vmap = learnedValues.get
       if(vmap == None)
         log.info("Nothing learned yet! VMAP is BOTTOM! = {} \n", vmap)
       else {
         log.info("Learned VMAP = {} \n", vmap)
-        // TODO: send response to clients
-        clients.foreach( cli => vmap.foreach({ case (_, value) => if(value != Nil) cli ! Delivery(value.asInstanceOf[Array[Byte]]) }) )
+        clients.foreach( cli => { 
+          log.info("Sending response to client: {} \n", cli)
+          vmap.foreach({ case (_, v) => v match {
+            case values: Value =>
+              val response = values.value.getOrElse(Array[Byte]())
+              log.info("Send value response: {}\n", serializer.fromBinary(response))
+              cli ! Delivery(response) 
+            case _ => //do nothing if the value is Nil
+            }
+          }) 
+        })
       }
     case state: CurrentClusterState =>
       log.info("Current members: {}\n", state.members)
@@ -115,16 +137,17 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     // Return the ActorRef of a member node
     case ActorIdentity(member: Member, Some(ref)) =>
       if (member.hasRole("cfabcast")) {
+        log.info("Adding a Protocol agent node on: {}\n", member.address)
         context watch ref
         ref ! GiveMeAgents
       }
       if (member.hasRole("server")) {
-        servers += ref
         log.info("Adding a Server Listener on: {}\n", member.address)
+        servers += ref
       }
       if (member.hasRole("client")) {
+        log.info("Adding a Client Listener on: {}\n", member.address)
         clients += ref
-        log.info("Adding a Client Listener on: {}\n", member.address)      
       }
 
     case ActorIdentity(member: Member, None) =>
@@ -145,20 +168,18 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
         leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
 
-
     case UnreachableMember(member) =>
       log.info("Member detected as unreachable: {}\n", member)
-//      notifyAll(actualConfig)
-//      leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
-//      context.become(configuration(actualConfig))
-
+      //TODO notify the leaderOracle and adopt new police
 
     case MemberRemoved(member, previousStatus) =>
       log.info("Member is Removed: {} after {}\n", member.address, previousStatus)
       nodes -= member.address
       //TODO identify when a client or a server disconnect and remove them.
 
-    case GetCFPs => sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
+    //FIXME: All proposers are collision fast
+    case GetCFPs => sender ! config.proposers
+    //sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
 
     // TODO: Improve this
     case Terminated(ref) =>

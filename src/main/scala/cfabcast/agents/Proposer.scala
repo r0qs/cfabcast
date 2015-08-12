@@ -191,26 +191,31 @@ trait Proposer extends ActorLogging {
     //TODO MemberRemoved
 
     case msg: MakeProposal =>
-     // instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
+      instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
       // TODO: Get the coordinators from actual round
       if(prnd.coordinator.nonEmpty) {
         proposedIn = IRange.fromMap(instances)
         // FIXME: Do it for all not decided instances
         // update the grnd
-        implicit val timeout = Timeout(10 seconds)
-        val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
-        decided onComplete {
-          case Success(d) =>
-            d.complement().iterateOverAll(instance => {
-              var round = prnd
-              if (grnd > prnd) {
-                round = grnd
-              }
-              if (isCFProposerOf(round)) {
+
+        println(s"PROPOSAL ${msg.value} \n PROPOSED IN ${proposedIn} \n")
+        println(s"ROUNDS: prnd: ${prnd} crnd ${crnd} grnd ${grnd} \n")
+        var round = prnd
+        if (grnd > prnd) {
+          round = grnd
+        }
+        if (isCFProposerOf(round)) {
+          implicit val timeout = Timeout(1 seconds)
+          val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
+          decided onComplete {
+            case Success(d) =>
+              d.complement().iterateOverAll(instance => {
+                println(s"TRYING in instance ${instance}")
                 val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
                 s onComplete { 
                   case Success(state) => 
-                    // TODO: Repropose old values not decided, save proposed values
+                    // TODO: Repropose values not decided by the same cfproposer, save proposed values
+                    println(s"PVAL ${state.pval} in instance ${instance}\n")
                     if (state.pval == None)
                       self ! Proposal(instance, round, Some(VMap(self -> msg.value)))
                     else
@@ -218,18 +223,15 @@ trait Proposer extends ActorLogging {
                     context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
                   case Failure(ex) => log.error("Instance return: ${s.isCompleted}. Because of a {}\n", ex.getMessage)
                 }
-              }
-              else {
-                val cfps = round.cfproposers
-                log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", self.hashCode, msg, cfps)
-                cfps.toVector(Random.nextInt(cfps.size)) forward msg
-              }
-            })
-
-          case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
+              })
+            case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
+          }
+        } else {
+          val cfps = round.cfproposers
+          log.info("ID: {} - Receive a proposal: {}, forward to a cfproposers {}\n", self.hashCode, msg, cfps)
+          cfps.toVector(Random.nextInt(cfps.size)) forward msg
         }
-      }
-      else {
+      } else {
         log.info("Coordinator NOT FOUND for round {}", prnd)
       }
   }

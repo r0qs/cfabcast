@@ -2,12 +2,12 @@ package cfabcast.messages
 
 import akka.actor.ActorRef
 import akka.cluster.Member
-import cfabcast._
 
+import cfabcast._
 /**
  * Define protocol messages for collision-fast paxos.
  */
-sealed class Message
+sealed class Message extends Serializable
 
 // Message sent by proposer p to the collision-fast proposer for the current round of p.
 case class Proposal(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
@@ -66,11 +66,3 @@ sealed class ConsoleMsg
 case object StartConsole extends ConsoleMsg
 case class Command(cmd: String) extends ConsoleMsg
 
-/*
- * Client Messages
- */
-sealed class CFABCastMessage
-case class Broadcast(message: Array[Byte]) extends CFABCastMessage
-case class Delivery(message: Array[Byte])  extends CFABCastMessage {
-  def getObject: Array[Byte] = message
-}
