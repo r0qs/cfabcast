@@ -40,6 +40,9 @@ class IRange(self: List[Interval]) extends Iterable[Interval] {
     new IRange(tryInsert(elem, self))
   }
 
+  def contains(elem: Int): Boolean =
+    self.exists(interval => interval contains elem)
+
   def iterateOverAll[U](f: Int => U) = 
     self.foreach(interval => interval.foreach(elem => f(elem)))
 

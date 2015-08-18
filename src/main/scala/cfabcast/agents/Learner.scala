@@ -70,7 +70,6 @@ trait Learner extends ActorLogging {
       sender ! instancesLearned
     
     case WhatValuesULearn =>
-      log.info("LEARNED INSTANCES: {}\n", instances)
       instances.foreach({case (instance, state) => 
         state onSuccess {
           case s => log.info("In {} I learn {}\n", instance, s.learned)
@@ -89,5 +88,5 @@ class LearnerActor extends Actor with Learner {
   var quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, Message]]()
   var pPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Set[ActorRef]]()
 
-  def receive = learnerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set()))))
+  def receive = learnerBehavior(ClusterConfiguration(), Map())
 }

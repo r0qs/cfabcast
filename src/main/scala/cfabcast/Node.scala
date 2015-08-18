@@ -24,11 +24,15 @@ import cfabcast.serialization.CFABCastSerializer
 class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorLogging {
   val cluster = Cluster(context.system)
 
+  // Agents of the protocol
   var proposers = Set.empty[ActorRef]
   var acceptors = Set.empty[ActorRef]
   var learners  = Set.empty[ActorRef]
 
+  // Associated clients
   var clients = Set.empty[ActorRef]
+
+  // Associated servers
   var servers = Set.empty[ActorRef]
 
   val serializer = new CFABCastSerializer(context.system.asInstanceOf[ExtendedActorSystem])
@@ -106,6 +110,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case Broadcast(data) =>
       if(waitFor <= config.acceptors.size) {
         log.info("Receive proposal: {}\n", serializer.fromBinary(data))
+        // TODO: Clients must be associated with a proposer
+        // and servers with a learner (cluster client)
         proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
       }
       else
@@ -117,13 +123,13 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
         log.info("Nothing learned yet! VMAP is BOTTOM! = {} \n", vmap)
       else {
         log.info("Learned VMAP = {} \n", vmap)
-        clients.foreach( cli => { 
-          log.info("Sending response to client: {} \n", cli)
+        servers.foreach( server => { 
+          log.info("Sending response to server: {} \n", server)
           vmap.foreach({ case (_, v) => v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
-              log.info("Send value response: {}\n", serializer.fromBinary(response))
-              cli ! Delivery(response) 
+              log.info("Value in response: {}\n", serializer.fromBinary(response))
+              server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
           }) 
@@ -178,8 +184,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       //TODO identify when a client or a server disconnect and remove them.
 
     //FIXME: All proposers are collision fast
-    case GetCFPs => sender ! config.proposers
-    //sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
+    case GetCFPs => sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
+//    sender ! config.proposers
 
     // TODO: Improve this
     case Terminated(ref) =>

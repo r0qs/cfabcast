@@ -37,7 +37,6 @@ trait Proposer extends ActorLogging {
   
   def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
-    val actorSender = sender
     state onComplete {
       case Success(s) =>
                   if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
@@ -145,6 +144,7 @@ trait Proposer extends ActorLogging {
             case Success(cfp) => 
               decided onComplete {
                 case Success(d) => 
+                  println(s"DECIDED LEADER: ${d}\n")
                   d.complement().iterateOverAll(i => {
                     val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None, Map())))
                     // FIXME: This is not thread-safe
@@ -191,39 +191,44 @@ trait Proposer extends ActorLogging {
     //TODO MemberRemoved
 
     case msg: MakeProposal =>
-      instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
-      // TODO: Get the coordinators from actual round
+      // update the grnd
+      //instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
       if(prnd.coordinator.nonEmpty) {
-        proposedIn = IRange.fromMap(instances)
-        // FIXME: Do it for all not decided instances
-        // update the grnd
-
-        println(s"PROPOSAL ${msg.value} \n PROPOSED IN ${proposedIn} \n")
-        println(s"ROUNDS: prnd: ${prnd} crnd ${crnd} grnd ${grnd} \n")
         var round = prnd
         if (grnd > prnd) {
           round = grnd
         }
         if (isCFProposerOf(round)) {
+          // If not proposed and not learned nothing yet in this instance
+          // FIXME: This need to be empty
+          //proposedIn = IRange.fromMap(instances)
+          proposed += 1
+          proposedIn += (proposed -> msg.value)
+
           implicit val timeout = Timeout(1 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           decided onComplete {
             case Success(d) =>
-              d.complement().iterateOverAll(instance => {
-                println(s"TRYING in instance ${instance}")
-                val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
-                s onComplete { 
-                  case Success(state) => 
-                    // TODO: Repropose values not decided by the same cfproposer, save proposed values
-                    println(s"PVAL ${state.pval} in instance ${instance}\n")
-                    if (state.pval == None)
-                      self ! Proposal(instance, round, Some(VMap(self -> msg.value)))
-                    else
-                      self ! Proposal(instance, round, state.pval)
-                    context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
-                  case Failure(ex) => log.error("Instance return: ${s.isCompleted}. Because of a {}\n", ex.getMessage)
+              proposedIn.keys.foreach(instance =>
+                if (!d.contains(instance)) {
+                  println(s"TRYING in instance ${instance}")
+                  val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
+                  s onComplete { 
+                    case Success(state) => 
+                      // TODO: Repropose values not decided by the same cfproposer, save proposed values
+                      if (state.pval == None)
+                        self ! Proposal(instance, round, Some(VMap(self -> proposedIn(instance))))
+                      else
+                        self ! Proposal(instance, round, state.pval)
+                      context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
+                    case Failure(ex) => log.error("Instance return: ${s.isCompleted}. Because of a {}\n", ex.getMessage)
+                  }
                 }
-              })
+                else {
+                  //Return what this agent already learned (to client?)
+                  log.info("Instance {} already learned!\n", instance)
+                }
+              )
             case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
           }
         } else {
@@ -245,8 +250,12 @@ class ProposerActor extends Actor with Proposer {
   var prnd: Round = Round()
   // Coordinator current round
   var crnd: Round = Round()
-  
-  var proposedIn: IRange = IRange()
+ 
+  // FIXME: This need to be Long?
+  var proposed: Int = -1;
+
+  var proposedIn: Map[Int, Values] = Map()
+  //var proposedIn: IRange = IRange()
 
   var coordinators: Set[ActorRef] = Set.empty[ActorRef]
 
@@ -254,5 +263,5 @@ class ProposerActor extends Actor with Proposer {
 
   def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
 
-  def receive = proposerBehavior(ClusterConfiguration(), Map(0 -> Future.successful(ProposerMeta(None, None, Map()))))
+  def receive = proposerBehavior(ClusterConfiguration(), Map())
 }

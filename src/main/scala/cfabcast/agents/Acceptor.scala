@@ -23,9 +23,9 @@ trait Acceptor extends ActorLogging {
       case Success(s) => // Cond 1
                 if (rnd <= msg.rnd) {
                   if ((!msg.value.get.isEmpty && s.vrnd < msg.rnd) || s.vval == None) {
-                    config.learners foreach (_ ! Msg2B(msg.instance, rnd, s.vval))
-                    newState.success(s.copy(vrnd = msg.rnd, vval = msg.value))
                     self ! UpdateARound(msg.rnd)
+                    newState.success(s.copy(vrnd = msg.rnd, vval = msg.value))
+                    config.learners foreach (_ ! Msg2B(msg.instance, rnd, s.vval))
                   }
                 } else newState.success(s)
       case Failure(ex) => log.info("2B1 Promise fail, not update State. Because of a {}\n", ex.getMessage)
@@ -49,9 +49,9 @@ trait Acceptor extends ActorLogging {
                 } else {
                   value = s.vval.get ++ msg.value.get
                 }
-                config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, Some(value)))
-                newState.success(s.copy(vrnd = msg.rnd, vval = Some(value)))
                 self ! UpdateARound(msg.rnd)
+                newState.success(s.copy(vrnd = msg.rnd, vval = Some(value)))
+                config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, Some(value)))
               } else newState.success(s)
       case Failure(ex) => log.error(s"2B2 Promise fail, not update State. Because of a {}\n", ex.getMessage)
     }
@@ -113,5 +113,5 @@ trait Acceptor extends ActorLogging {
 //TODO: Make this persistent: http://doc.akka.io/docs/akka/2.3.11/scala/persistence.html
 class AcceptorActor extends Actor with Acceptor {
   var rnd: Round = Round()
-  def receive = acceptorBehavior(ClusterConfiguration(), Map(0 -> Future.successful(AcceptorMeta(Round(), None, Map()))))
+  def receive = acceptorBehavior(ClusterConfiguration(), Map())
 }
