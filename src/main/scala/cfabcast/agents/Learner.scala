@@ -24,18 +24,15 @@ trait Learner extends ActorLogging {
                 // TODO: verify learner round!?
                 val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
                 if (quorum.size >= config.quorumSize) {
-                  var msgs = quorum.values.asInstanceOf[Iterable[Msg2B]]
-                  //.toSet ++ Set(m)
+                  var msgs = quorum.values.asInstanceOf[Iterable[Msg2B]]//.toSet ++ Set(msg)
                   val Q2bVals = msgs.map(a => a.value).toSet.flatMap( (e: Option[VMap[Values]]) => e)
-                  //Q2bVals += m.value.get
+                  //Q2bVals += msg.value.get
                   var value = VMap[Values]()
                   for (p <- pPerInstance.getOrElse(msg.instance, scala.collection.mutable.Set())) value += (p -> Nil)
-                  //println(s"GLB: ${VMap.glb(Q2bVals)} VALUE: ${value}\n")
                   val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
                   // TODO: Speculative execution
                   val Slub: Set[VMap[Values]] = Set(s.learned.get, w.get)
                   val lubVals: VMap[Values] = VMap.lub(Slub)
-                  log.info("LEARNER {} --- LEARNED: {}\n", self, lubVals)
                   newState.success(s.copy(learned = Some(lubVals)))
                   instancesLearned = instancesLearned.insert(msg.instance)
                   log.info("INSTANCES LEARNED: {}\n", instancesLearned)
@@ -57,10 +54,9 @@ trait Learner extends ActorLogging {
       }
 
     case msg: Msg2B =>
-      val actorSender = sender
       // FIXME: Sometimes not return the correct state
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
-      quorumPerInstance(msg.instance) += (actorSender -> msg)
+      quorumPerInstance(msg.instance) += (sender -> msg)
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()), Map(), Set())))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
 
@@ -69,10 +65,10 @@ trait Learner extends ActorLogging {
       // TODO: Send interval of learned instances
       sender ! instancesLearned
     
-    case WhatValuesULearn =>
+    case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("In {} I learn {}\n", instance, s.learned)
+          case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
         }
       })
 

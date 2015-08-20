@@ -41,7 +41,7 @@ case object GetCFPs extends Message
 case class Learned(learned: Option[VMap[Values]]) extends Message
 
 case object WhatULearn extends Message
-case object WhatValuesULearn extends Message
+case object GetState extends Message
 
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 case class UpdateARound(rnd: Round) extends Message

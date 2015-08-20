@@ -55,8 +55,6 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   // Subscribe to cluster changes, MemberUp
   override def preStart(): Unit = {
     cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
-    //FIXME remove this ("two" msg test)
-    //clients += self
   }
 
   // Unsubscribe when stop to re-subscripe when restart
@@ -99,8 +97,10 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case Command(cmd: String) =>
       log.info("Received COMMAND {} \n", cmd)
       cmd match {
-        case "learn" => learners.head ! WhatValuesULearn
-        case "two" => 
+        case "pstate" => proposers.foreach(_ ! GetState) 
+        case "astate" => acceptors.foreach(_ ! GetState) 
+        case "lstate" => learners.foreach(_ ! GetState) 
+        case "all" => 
           config.proposers.zipWithIndex.foreach { case (ref, i) =>
             ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
@@ -184,8 +184,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       //TODO identify when a client or a server disconnect and remove them.
 
     //FIXME: All proposers are collision fast
-    case GetCFPs => sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
-//    sender ! config.proposers
+    case GetCFPs => sender ! config.proposers
+    //sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
 
     // TODO: Improve this
     case Terminated(ref) =>

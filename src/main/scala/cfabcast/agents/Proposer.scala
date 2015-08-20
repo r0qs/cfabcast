@@ -29,7 +29,6 @@ trait Proposer extends ActorLogging {
                     self ! UpdatePRound(prnd, msg.rnd)
                     config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
                   } else newState.success(s)
-                  //println(s"Final Phase1A instance=${msg.instance} round=${msg.rnd}:\n prnd=${prnd} \n crnd=${crnd}  \n pval=${s.pval} \n cval=${s.cval} \n quorum=${s.quorum} \n")
       case Failure(ex) => log.error("1A Promise execution fail, not update State. Because of a {}", ex.getMessage)
     }
     newState.future
@@ -73,8 +72,9 @@ trait Proposer extends ActorLogging {
     val newState = Promise[ProposerMeta]()
     state onComplete {
       case Success(s) =>
-          if (s.quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && s.cval == None) {
-            val msgs = s.quorum.values.asInstanceOf[Iterable[Msg1B]]
+          val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
+          if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && s.cval == None) {
+            val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
             val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
             val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toSet.flatMap( (e: Option[VMap[Values]]) => e)
             //TODO: add msg.value to S
@@ -117,6 +117,14 @@ trait Proposer extends ActorLogging {
   def getRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
+    case GetState =>
+      println(s"PROPOSERS INSTANCES: ${instances}\n")
+      instances.foreach({case (instance, state) => 
+        state onSuccess {
+          case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
+        }
+      })
+    
     case msg: UpdatePRound =>
       log.info("My prnd: {} crnd: {} -- Updating to prnd {} crnd: {}\n", prnd, crnd, msg.prnd, msg.crnd)
       if(prnd < msg.prnd) {
@@ -144,11 +152,11 @@ trait Proposer extends ActorLogging {
             case Success(cfp) => 
               decided onComplete {
                 case Success(d) => 
-                  println(s"DECIDED LEADER: ${d}\n")
                   d.complement().iterateOverAll(i => {
                     val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None, Map())))
                     // FIXME: This is not thread-safe
                     grnd = Round(getRoundCount, Set(self), cfp)
+                    log.info(s"GRND: ${grnd}\n")
                     val msg = Configure(i, grnd)
                     context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
                   })
@@ -173,12 +181,10 @@ trait Proposer extends ActorLogging {
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(msg, state, config))))
 
     case msg: Msg1B =>
-      val actorSender = sender
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
-      state onSuccess {
-          case s =>
-                context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, Future.successful(s.copy(quorum =  s.quorum + (actorSender -> msg))), config))))
-      }
+      quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
+      quorumPerInstance(msg.instance) += (sender -> msg)
+      context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, state, config))))
 
     // Phase2Prepare
     case msg: Msg2S =>
@@ -203,32 +209,31 @@ trait Proposer extends ActorLogging {
           // FIXME: This need to be empty
           //proposedIn = IRange.fromMap(instances)
           proposed += 1
-          proposedIn += (proposed -> msg.value)
+          proposedValueIn += (proposed -> msg.value)
 
           implicit val timeout = Timeout(1 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           decided onComplete {
             case Success(d) =>
-              proposedIn.keys.foreach(instance =>
-                if (!d.contains(instance)) {
-                  println(s"TRYING in instance ${instance}")
-                  val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
-                  s onComplete { 
-                    case Success(state) => 
-                      // TODO: Repropose values not decided by the same cfproposer, save proposed values
-                      if (state.pval == None)
-                        self ! Proposal(instance, round, Some(VMap(self -> proposedIn(instance))))
-                      else
-                        self ! Proposal(instance, round, state.pval)
-                      context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
-                    case Failure(ex) => log.error("Instance return: ${s.isCompleted}. Because of a {}\n", ex.getMessage)
-                  }
-                }
-                else {
-                  //Return what this agent already learned (to client?)
-                  log.info("Instance {} already learned!\n", instance)
-                }
-              )
+              var instance = proposed
+              if (!d.contains(proposed) && !proposedIn.contains(proposed)) {
+                proposedIn = proposedIn.insert(proposed)
+              } else {
+                instance = d.complement().min.first
+                proposedIn = proposedIn.insert(instance)
+              }
+              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
+              s onComplete { 
+                case Success(state) => 
+                  log.info("PROPOSING VALUE {} IN INSTANCE {}\n", msg.value, instance)
+                // TODO: Repropose values not decided by the same cfproposer, save proposed values
+                  if (state.pval == None)
+                    self ! Proposal(instance, round, Some(VMap(self -> msg.value )))
+                  else
+                    self ! Proposal(instance, round, state.pval)
+                  context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
+                case Failure(ex) => log.error("Instance return: ${s.isCompleted}. Because of a {}\n", ex.getMessage)
+              }
             case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
           }
         } else {
@@ -254,8 +259,10 @@ class ProposerActor extends Actor with Proposer {
   // FIXME: This need to be Long?
   var proposed: Int = -1;
 
-  var proposedIn: Map[Int, Values] = Map()
-  //var proposedIn: IRange = IRange()
+  var proposedValueIn: Map[Int, Values] = Map()
+  var proposedIn: IRange = IRange()
+
+  var quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, Message]]()
 
   var coordinators: Set[ActorRef] = Set.empty[ActorRef]
 

@@ -2,6 +2,7 @@ import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.actor.ActorLogging
 import com.typesafe.config.ConfigFactory
+
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -14,9 +15,9 @@ object Main {
     val config = ConfigFactory.parseString(s"akka.remote.netty.tcp.port=$port").
       withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfabcast, proposer, acceptor, learner]")).
       withFallback(ConfigFactory.load())
-    val system = ActorSystem("ClusterSystem", config)
+    val system = ActorSystem("CFABCastSystem", config)
     //TODO: Use Akka configuration: http://doc.akka.io/docs/akka/2.3.12/general/configuration.html
-    val node = system.actorOf(Node.props(2, Map("proposer" -> 1, "acceptor" -> 1, "learner" -> 1)), "node")
+    val node = system.actorOf(Node.props(3, Map("proposer" -> 1, "acceptor" -> 1, "learner" -> 1)), "node")
 
     //For test:
     node ! StartConsole

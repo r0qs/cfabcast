@@ -73,6 +73,13 @@ class IRange(self: List[Interval]) extends Iterable[Interval] {
     else
       new IRange(List(Interval(start, -1)))
   }
+  
+  def next: Int = 
+    if (self.nonEmpty) {
+      if(self.last.to != -1) self.last.to + 1
+      else self.last.from + 1
+    }
+    else 0
 }
 
 object IRange {
@@ -87,7 +94,8 @@ object IRange {
 }
 
 class Interval(val from: Int, val to: Int) extends Ordered[Interval] {
-  def compare(that: Interval) = (this.to - this.from) - (that.to - that.from)
+ // The lowest interval in this context is one that has the lowest element
+  def compare(that: Interval) = this.from - that.from
 
   def contains(elem: Int) = (from <= elem && elem <= to)
 
@@ -99,6 +107,9 @@ class Interval(val from: Int, val to: Int) extends Ordered[Interval] {
   override def toString: String = s"[${from}, ${to}]"
 
   def max = if(from >= to) from else to
+  def first = from
+  def last = to
+  def next: Int = if(to != -1) to + 1 else from + 1
 }
 
 object Interval {

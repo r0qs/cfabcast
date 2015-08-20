@@ -75,6 +75,13 @@ trait Acceptor extends ActorLogging {
   }
 
   def acceptorBehavior(config: ClusterConfiguration, instances: Map[Int, Future[AcceptorMeta]]): Receive = {
+    case GetState =>
+      instances.foreach({case (instance, state) => 
+        state onSuccess {
+          case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
+        }
+      })
+
     case msg: UpdateARound => rnd = msg.rnd
 
     // Phase1B
