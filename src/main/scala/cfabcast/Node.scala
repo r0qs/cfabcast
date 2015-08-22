@@ -122,14 +122,14 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       if(vmap == None)
         log.info("Nothing learned yet! VMAP is BOTTOM! = {} \n", vmap)
       else {
-        log.info("Learned VMAP = {} \n", vmap)
+        log.info("Received Learned from {} with VMAP = {} \n", sender, vmap)
         servers.foreach( server => { 
-          log.info("Sending response to server: {} \n", server)
+//          log.info("Sending response to server: {} \n", server)
           vmap.foreach({ case (_, v) => v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
-              log.info("Value in response: {}\n", serializer.fromBinary(response))
-              server ! Delivery(response) 
+//              log.info("Value in response: {}\n", serializer.fromBinary(response))
+//              server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
           }) 

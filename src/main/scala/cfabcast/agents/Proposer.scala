@@ -25,7 +25,7 @@ trait Proposer extends ActorLogging {
     state onComplete {
       case Success(s) =>
                   if (isCoordinatorOf(msg.rnd) && crnd < msg.rnd) {
-                    newState.success(ProposerMeta(s.pval, None, s.quorum))
+                    newState.success(ProposerMeta(s.pval, None))
                     self ! UpdatePRound(prnd, msg.rnd)
                     config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
                   } else newState.success(s)
@@ -40,8 +40,8 @@ trait Proposer extends ActorLogging {
       case Success(s) =>
                   if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
                     // Phase 2A for CFProposers
-                    (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
                     newState.success(s.copy(pval = msg.value))
+                    (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
                   } else {
                     newState.success(s) 
                   }
@@ -55,13 +55,11 @@ trait Proposer extends ActorLogging {
     val actorSender = sender
     state onComplete {
       case Success(s) =>
-        if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) {
-          if (msg.value.get(actorSender) == Nil) {
-            (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
-          } else {
-            (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
-          }
+        if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None && msg.value.getOrElse(actorSender, None) == Nil) {
           newState.success(s.copy(pval = msg.value))
+          (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
+        } else {
+          newState.success(s)
         }
       case Failure(ex) => log.error("2A Promise execution fail, not update State. Because of a {}\n", ex.getMessage)
     }
@@ -153,7 +151,7 @@ trait Proposer extends ActorLogging {
               decided onComplete {
                 case Success(d) => 
                   d.complement().iterateOverAll(i => {
-                    val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None, Map())))
+                    val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
                     // FIXME: This is not thread-safe
                     grnd = Round(getRoundCount, Set(self), cfp)
                     log.info(s"GRND: ${grnd}\n")
@@ -172,23 +170,23 @@ trait Proposer extends ActorLogging {
       }
 
     case msg: Proposal =>
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       // TODO: Make this lazy and chain instances
       context.become(proposerBehavior(config, instances + (msg.instance -> propose(msg, state, config))))
 
     case msg: Msg2A =>
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(msg, state, config))))
 
     case msg: Msg1B =>
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
       quorumPerInstance(msg.instance) += (sender -> msg)
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, state, config))))
 
     // Phase2Prepare
     case msg: Msg2S =>
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
 
     // TODO: Do this in a sharedBehavior
@@ -209,7 +207,6 @@ trait Proposer extends ActorLogging {
           // FIXME: This need to be empty
           //proposedIn = IRange.fromMap(instances)
           proposed += 1
-          proposedValueIn += (proposed -> msg.value)
 
           implicit val timeout = Timeout(1 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
@@ -222,10 +219,11 @@ trait Proposer extends ActorLogging {
                 instance = d.complement().min.first
                 proposedIn = proposedIn.insert(instance)
               }
-              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None, Map())))
+              proposedValueIn += (instance -> msg.value)
+              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
               s onComplete { 
                 case Success(state) => 
-                  log.info("PROPOSING VALUE {} IN INSTANCE {}\n", msg.value, instance)
+                  log.info("{} PROPOSING VALUE {} IN INSTANCE {}\n",self, msg.value, instance)
                 // TODO: Repropose values not decided by the same cfproposer, save proposed values
                   if (state.pval == None)
                     self ! Proposal(instance, round, Some(VMap(self -> msg.value )))

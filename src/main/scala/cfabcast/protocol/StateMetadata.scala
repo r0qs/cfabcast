@@ -6,26 +6,20 @@ import cfabcast._
 import cfabcast.messages._
 
 private[protocol] trait StateMetadata extends Serializable {
-  abstract class Metadata {
-    val quorum: Map[ActorRef, Message]
-  }
+  abstract class Metadata 
   
   case class ProposerMeta(
     pval: Option[VMap[Values]],
-    cval: Option[VMap[Values]],
-    quorum: Map[ActorRef, Message]
+    cval: Option[VMap[Values]]
   )extends Metadata
 
   case class AcceptorMeta(
     vrnd: Round,
-    vval: Option[VMap[Values]],
-    quorum: Map[ActorRef, Message]
+    vval: Option[VMap[Values]]
   )extends Metadata
 
   case class LearnerMeta(
-    learned: Option[VMap[Values]],
-    quorum: Map[ActorRef, Message],
-    P: Set[ActorRef]
+    learned: Option[VMap[Values]]
   )extends Metadata
 
 }

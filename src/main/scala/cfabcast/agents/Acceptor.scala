@@ -19,12 +19,15 @@ trait Acceptor extends ActorLogging {
 
   def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
+    val actorSender = sender  
     state onComplete {
       case Success(s) => // Cond 1
                 if (rnd <= msg.rnd) {
                   if ((!msg.value.get.isEmpty && s.vrnd < msg.rnd) || s.vval == None) {
+                    log.info(s"${self} Cond1 satisfied received MSG2S(${msg.value}) from ${actorSender}\n")
                     self ! UpdateARound(msg.rnd)
                     newState.success(s.copy(vrnd = msg.rnd, vval = msg.value))
+                    log.info(s"${self} Update vval ${msg.value} in round ${msg.rnd}\n")
                     config.learners foreach (_ ! Msg2B(msg.instance, rnd, s.vval))
                   }
                 } else newState.success(s)
@@ -36,18 +39,20 @@ trait Acceptor extends ActorLogging {
 
   def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
-    val actorSender = sender //FIXME!!!!! See below. 
+    val actorSender = sender  
     state onComplete {
       case Success(s) => // Cond 2
-              //FIXME: actorSender trigger: "java.util.NoSuchElementException: key not found" in line below,
               if (rnd <= msg.rnd && msg.value.getOrElse(actorSender, None) != Nil) {
+                log.info(s"${self} Cond2 satisfied received MSG2A(${msg.value}) from ${actorSender}\n")
                 var value = VMap[Values]()
                 if (s.vrnd < msg.rnd || s.vval == None) {
                   // extends value and put Nil for all proposers
                   value = msg.value.get
                   for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
+                  log.info(s"${self} Extending vval with nil ${value} in round ${msg.rnd}\n")
                 } else {
                   value = s.vval.get ++ msg.value.get
+                  log.info(s"${self} Extending vval with msg.value ${value} in round ${msg.rnd}\n")
                 }
                 self ! UpdateARound(msg.rnd)
                 newState.success(s.copy(vrnd = msg.rnd, vval = Some(value)))
@@ -88,7 +93,7 @@ trait Acceptor extends ActorLogging {
     // For this instance and round the sender need to be a coordinator
     // Make this verification for all possible instances
     case msg: Msg1A =>
-      val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(msg, state, config))))
 
 /*    case msg: Msg1Am =>
@@ -101,12 +106,12 @@ trait Acceptor extends ActorLogging {
     // Phase2B
     // FIXME: Execute this once!!
     case msg: Msg2S =>
-      val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B1(msg, state, config))))
     
     // FIXME: data.value(sender) != Nil -> how to unique identify actors? using actorref?
     case msg: Msg2A =>
-      val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None, Map())))
+      val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(msg, state, config))))
     
     // TODO: Do this in a sharedBehavior
