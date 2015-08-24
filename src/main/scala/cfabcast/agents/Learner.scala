@@ -31,9 +31,9 @@ trait Learner extends ActorLogging {
                   val Q2bVals = quorum.values.toList
                   var value = VMap[Values]()
                   for (p <- pPerInstance.getOrElse(msg.instance, scala.collection.mutable.Set())) value += (p -> Nil)
-                  val w: Option[VMap[Values]] = Some(VMap.glb(Q2bVals) ++ value)
+                  val w: VMap[Values] = VMap.glb(Q2bVals) ++ value
                   // TODO: Speculative execution
-                  val Slub: List[VMap[Values]] = List(s.learned.get, w.get)
+                  val Slub: List[VMap[Values]] = List(s.learned.get, w)
                   val lubVals: VMap[Values] = VMap.lub(Slub)
                   newState.success(s.copy(learned = Some(lubVals)))
                   instancesLearned = instancesLearned.insert(msg.instance)

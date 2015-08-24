@@ -55,9 +55,14 @@ trait Proposer extends ActorLogging {
     val actorSender = sender
     state onComplete {
       case Success(s) =>
+        // FIXME: msg.value.get(sender) need to be Nil to execute this!?
+        // This is never executed!!! because the msg.value never equals to Nil
         if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None && msg.value.getOrElse(actorSender, None) == Nil) {
-          newState.success(s.copy(pval = msg.value))
-          (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value))
+          // if msg.value.getOrElse(actorSender, None) != Nil, then someone proposed anything in this current instance
+          // so this cfp need to force send Nil to learners instead of msg.value, or not?
+          val nil = Some(VMap[Values](self -> Nil))
+          newState.success(s.copy(pval = nil))
+          (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, nil))
         } else {
           newState.success(s)
         }
@@ -142,7 +147,7 @@ trait Proposer extends ActorLogging {
           log.info("Iam a LEADER! My id is: {}\n", self.hashCode)
           // Run configure phase (1)
           // TODO: ask for all learners and reduce the result  
-          implicit val timeout = Timeout(10 seconds)
+          implicit val timeout = Timeout(1 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
           cfpSet onComplete {
@@ -195,27 +200,30 @@ trait Proposer extends ActorLogging {
 
     case msg: MakeProposal =>
       // update the grnd
-      //instances.foreach({case (k, v) => println(s"Instance ${k} => ${v} \n")})
       if(prnd.coordinator.nonEmpty) {
         var round = prnd
         if (grnd > prnd) {
           round = grnd
         }
         if (isCFProposerOf(round)) {
-          // If not proposed and not learned nothing yet in this instance
-          // FIXME: This need to be empty
-          //proposedIn = IRange.fromMap(instances)
           proposed += 1
-
           implicit val timeout = Timeout(1 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           decided onComplete {
             case Success(d) =>
               var instance = proposed
+              // If not proposed and not learned nothing yet in this instance
               if (!d.contains(proposed) && !proposedIn.contains(proposed)) {
                 proposedIn = proposedIn.insert(proposed)
               } else {
-                instance = d.complement().min.first
+                // Not repropose Nil on the last valid instance, use it to a new value
+                val nilReproposalInstances = d.complement().dropLast
+                nilReproposalInstances.iterateOverAll(i => {
+                  proposedValueIn += (instance -> Nil)
+                  self ! Proposal(i, round, Some(VMap(self -> Nil)))
+                })
+                instance = d.next
+                proposed = instance
                 proposedIn = proposedIn.insert(instance)
               }
               proposedValueIn += (instance -> msg.value)
@@ -225,7 +233,7 @@ trait Proposer extends ActorLogging {
                   log.info("{} PROPOSING VALUE {} IN INSTANCE {}\n",self, msg.value, instance)
                 // TODO: Repropose values not decided by the same cfproposer, save proposed values
                   if (state.pval == None)
-                    self ! Proposal(instance, round, Some(VMap(self -> msg.value )))
+                    self ! Proposal(instance, round, Some(VMap(self -> msg.value)))
                   else
                     self ! Proposal(instance, round, state.pval)
                   context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))

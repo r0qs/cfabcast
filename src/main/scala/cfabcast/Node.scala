@@ -153,6 +153,8 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       if (member.hasRole("client")) {
         log.info("Adding a Client Listener on: {}\n", member.address)
         clients += ref
+        // DEBUG
+        servers += ref
       }
 
     case ActorIdentity(member: Member, None) =>
@@ -168,7 +170,6 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       notifyAll(actualConfig)
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
-      //TODO: Do this only if proposers change
       if (waitFor == actualConfig.acceptors.size)
         leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))

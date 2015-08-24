@@ -52,6 +52,8 @@ class IRange(self: List[Interval]) extends Iterable[Interval] {
     a
   }
 
+  def dropLast: IRange = new IRange(self.dropRight(1))
+
   def complement(start: Int = 0): IRange = {
     var result = List.empty[Interval]
     def makeComplement(first: Interval, second: List[Interval]): List[Interval] = {
