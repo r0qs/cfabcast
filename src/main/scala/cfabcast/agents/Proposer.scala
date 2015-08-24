@@ -74,7 +74,7 @@ trait Proposer extends ActorLogging {
           if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && s.cval == None) {
             val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
             val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
-            val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toSet.flatMap( (e: Option[VMap[Values]]) => e)
+            val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
             //TODO: add msg.value to S
             if(S.isEmpty) {
               config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
@@ -116,7 +116,6 @@ trait Proposer extends ActorLogging {
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
     case GetState =>
-      println(s"PROPOSERS INSTANCES: ${instances}\n")
       instances.foreach({case (instance, state) => 
         state onSuccess {
           case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
@@ -124,7 +123,7 @@ trait Proposer extends ActorLogging {
       })
     
     case msg: UpdatePRound =>
-      log.info("My prnd: {} crnd: {} -- Updating to prnd {} crnd: {}\n", prnd, crnd, msg.prnd, msg.crnd)
+      log.debug("My prnd: {} crnd: {} -- Updating to prnd {} crnd: {}\n", prnd, crnd, msg.prnd, msg.crnd)
       if(prnd < msg.prnd) {
         prnd = msg.prnd
         grnd = msg.prnd

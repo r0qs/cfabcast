@@ -2,7 +2,6 @@ package cfabcast
 
 import collection.mutable._
 import scala.collection.mutable.{Builder, MapBuilder}
-import scala.collection.immutable.Set
 import scala.collection.generic.CanBuildFrom
 import akka.actor.ActorRef
 import java.io._
@@ -22,7 +21,6 @@ class Value private extends Values {
   
   override def equals(other : Any) : Boolean = other match {
     case that : Value => (this.canEqual(that) && java.util.Arrays.equals(this.value.get, that.value.get))
-//    (that.canEqual(this) && this.value == that.value)
     case _ => false
   }
   
@@ -88,7 +86,7 @@ object VMap {
     nvm
   }
 
-  def fromSet[T](s: Set[(ActorRef, T)]): VMap[T] = {
+  def fromList[T](s: List[(ActorRef, T)]): VMap[T] = {
     val nvm: VMap[T] = empty
     for (vm <- s) nvm += vm
     nvm
@@ -105,9 +103,9 @@ object VMap {
       }
 
 
-  def glb[T](s: Set[VMap[T]]): VMap[T] = s.reduce((a, b) => a prefix b)
+  def glb[T](s: List[VMap[T]]): VMap[T] = s.reduce((a, b) => a prefix b)
 
-  def isCompatible[T](s: Set[VMap[T]]): Boolean = {
+  def isCompatible[T](s: List[VMap[T]]): Boolean = {
     if (s.isEmpty) true
     else {
       val a: VMap[T] = s.head
@@ -115,8 +113,8 @@ object VMap {
       else false
     }
   }
-  //FIXME: return the correct type
-  def lub[T](s: Set[VMap[T]]) = fromSet[T](s.flatten)
+  
+  def lub[T](s: List[VMap[T]]) = fromList[T](s.flatten)
 }
 
 //TODO: Define CStruct as Option[VMap[Values]]
