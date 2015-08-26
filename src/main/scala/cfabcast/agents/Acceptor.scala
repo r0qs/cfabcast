@@ -5,7 +5,7 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 import scala.concurrent.Future
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext
 import scala.util.Random
 import concurrent.Promise
 import scala.util.{Success, Failure}
@@ -17,7 +17,7 @@ trait Acceptor extends ActorLogging {
     log.info("Acceptor ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
+  def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     val actorSender = sender  
     state onComplete {
@@ -37,7 +37,7 @@ trait Acceptor extends ActorLogging {
     newState.future
   }
 
-  def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
+  def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     val actorSender = sender  
     state onComplete {
@@ -63,7 +63,7 @@ trait Acceptor extends ActorLogging {
     newState.future
   }
  
-  def phase1B(msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration): Future[AcceptorMeta] = {
+  def phase1B(msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
     val actorSender = sender
@@ -79,11 +79,11 @@ trait Acceptor extends ActorLogging {
     newState.future
   }
 
-  def acceptorBehavior(config: ClusterConfiguration, instances: Map[Int, Future[AcceptorMeta]]): Receive = {
+  def acceptorBehavior(config: ClusterConfiguration, instances: Map[Int, Future[AcceptorMeta]])(implicit ec: ExecutionContext): Receive = {
     case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
+          case s => log.info("{}: INSTANCE: {} -- STATE: {}\n", self, instance, s)
         }
       })
 
@@ -125,5 +125,5 @@ trait Acceptor extends ActorLogging {
 //TODO: Make this persistent: http://doc.akka.io/docs/akka/2.3.11/scala/persistence.html
 class AcceptorActor extends Actor with Acceptor {
   var rnd: Round = Round()
-  def receive = acceptorBehavior(ClusterConfiguration(), Map())
+  def receive = acceptorBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
 }

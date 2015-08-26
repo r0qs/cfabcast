@@ -1,5 +1,9 @@
 package cfabcast
 
+import scala.util.control.Exception
+
+case class ElementAlreadyExistsException(e: String) extends Exception(e)
+
 /*
  * Interval of instances
  */
@@ -15,7 +19,8 @@ class IRange(self: List[Interval]) extends Iterable[Interval] {
   def insert(elem: Int): IRange = {
     def tryInsert(elem: Int, in: List[Interval]): List[Interval] = in match {
       case x::xs =>
-        if(x contains elem) in
+        if(x contains elem) //in
+          throw new ElementAlreadyExistsException(s"Element ${elem} already exists on the interval ${x}.")
         else if(elem < x.from) {
           x.from - elem match {
             case 1 => Interval(elem, x.to) :: xs
@@ -30,7 +35,9 @@ class IRange(self: List[Interval]) extends Iterable[Interval] {
                   case 1 => Interval(x.from, xs.head.to) :: xs.tail
                   case _ => Interval(x.from, elem) :: xs
                 }
-              } else Interval(x.from, elem) :: xs
+              } else {
+                Interval(x.from, elem) :: xs
+              }
             case _ => x :: tryInsert(elem, xs)
           }
         }

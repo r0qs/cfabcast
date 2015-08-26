@@ -5,7 +5,7 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 import scala.concurrent.Future
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext
 import concurrent.Promise
 import scala.util.{Success, Failure}
 
@@ -16,7 +16,7 @@ trait Learner extends ActorLogging {
     log.info("Learner ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration): Future[LearnerMeta] = {
+  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = {
     val newState = Promise[LearnerMeta]()
     state onComplete {
       case Success(s) =>
@@ -36,11 +36,7 @@ trait Learner extends ActorLogging {
                   val Slub: List[VMap[Values]] = List(s.learned.get, w)
                   val lubVals: VMap[Values] = VMap.lub(Slub)
                   newState.success(s.copy(learned = Some(lubVals)))
-                  instancesLearned = instancesLearned.insert(msg.instance)
-                  log.info("{} LEARNED: {}\n",self, instancesLearned)
-
-                  // Notify what was learned
-                  context.parent ! Learned(s.copy(learned = Some(lubVals)).learned)
+                  self ! InstanceLearned(msg.instance, Some(lubVals))
                 } 
                 else newState.success(s)
       case Failure(ex) => log.error("Learn Promise fail, not update State. Because of a {}\n", ex.getMessage)
@@ -48,7 +44,7 @@ trait Learner extends ActorLogging {
     newState.future
   }
 
-  def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]]): Receive = {
+  def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
     case msg: Msg2A =>
       if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
         pPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Set())
@@ -71,9 +67,21 @@ trait Learner extends ActorLogging {
     case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
+          case s => log.info("{}: INSTANCE: {} -- STATE: {}\n", self, instance, s)
         }
       })
+
+    //FIXME: notify all values one time only
+    case InstanceLearned(instance, learned) =>
+      try {
+        instancesLearned = instancesLearned.insert(instance)
+        // Notify what was learned
+        context.parent ! Learned(learned)
+        log.info("{} LEARNED: {}\n",self, instancesLearned)
+      } catch {
+        case e: ElementAlreadyExistsException => 
+          log.info("Instance Already learned, not send response")
+      }
 
     case msg: UpdateConfig =>
       context.become(learnerBehavior(msg.config, instances))
@@ -82,10 +90,9 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor extends Actor with Learner {
-
   var instancesLearned: IRange = IRange()
-  var quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, VMap[Values]]]()
-  var pPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Set[ActorRef]]()
+  val quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, VMap[Values]]]()
+  val pPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Set[ActorRef]]()
 
-  def receive = learnerBehavior(ClusterConfiguration(), Map())
+  def receive = learnerBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
 }

@@ -35,10 +35,12 @@ case class Configure(instance: Int, rnd: Round) extends Message
 
 // Message sent to start a new round
 case class MakeProposal(value: Values) extends Message
+case class TryPropose(instance: Int, round: Round, value: Values) extends Message
 
 case object GetCFPs extends Message
 
 case class Learned(learned: Option[VMap[Values]]) extends Message
+case class InstanceLearned(instance: Int, learned: Option[VMap[Values]]) extends Message
 
 case object WhatULearn extends Message
 case object GetState extends Message

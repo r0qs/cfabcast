@@ -108,13 +108,13 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       }
     case Broadcast(data) =>
       if(waitFor <= config.acceptors.size) {
-        log.info("Receive proposal: {}\n", serializer.fromBinary(data))
+        log.info("Receive proposal: {} from {} and sending to {}\n", serializer.fromBinary(data),sender, proposers)
         // TODO: Clients must be associated with a proposer
         // and servers with a learner (cluster client)
         proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
       }
       else
-        log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...\n", acceptors.size)
+        log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...\n", config.acceptors.size)
 
     case Learned(learnedValues) =>
       val vmap = learnedValues.get

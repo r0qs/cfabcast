@@ -5,13 +5,14 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 import scala.concurrent.Future
-import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.ExecutionContext
 import scala.util.Random
 import akka.util.Timeout
 import scala.concurrent.duration._
 import concurrent.Promise
 import scala.util.{Success, Failure}
 import akka.pattern.ask
+import akka.pattern.AskTimeoutException
 
 trait Proposer extends ActorLogging {
   this: ProposerActor =>
@@ -20,7 +21,7 @@ trait Proposer extends ActorLogging {
     log.info("Proposer ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
+  def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     state onComplete {
       case Success(s) =>
@@ -34,13 +35,14 @@ trait Proposer extends ActorLogging {
     newState.future
   }
   
-  def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
+  def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     state onComplete {
       case Success(s) =>
                   if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
                     // Phase 2A for CFProposers
                     newState.success(s.copy(pval = msg.value))
+                    log.info("{}: UPDATE PVAL:{} TO: {} in instance: {}", self, s.pval, msg.value, msg.instance)
                     (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
                   } else {
                     newState.success(s) 
@@ -50,7 +52,7 @@ trait Proposer extends ActorLogging {
     newState.future
   }
   
-  def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
+  def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     val actorSender = sender
     state onComplete {
@@ -71,7 +73,7 @@ trait Proposer extends ActorLogging {
     newState.future
   }
 
-  def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
+  def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     state onComplete {
       case Success(s) =>
@@ -97,7 +99,7 @@ trait Proposer extends ActorLogging {
     newState.future
   }  
 
-  def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration): Future[ProposerMeta] = {
+  def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
     val newState = Promise[ProposerMeta]()
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
     state onComplete {
@@ -119,11 +121,20 @@ trait Proposer extends ActorLogging {
 
   def getRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
 
-  def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]]): Receive = {
+/*  def proposeRetry(actorRef: ActorRef, instance: Int, round: Round, vmap: Option[VMap[Values]]): Future[Any] = {
+    implicit val timeout = Timeout(1 seconds)
+    val future = (actorRef ? Proposal(instance, round, vmap)) recover {
+      case e: AskTimeoutException =>
+        proposeRetry(actorRef, instance + 1, round, vmap)
+    }
+    future
+  }
+*/
+  def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]])(implicit ec: ExecutionContext): Receive = {
     case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("INSTANCE: {} -- STATE: {}\n", instance, s)
+          case s => log.info("{}: INSTANCE: {} -- STATE: {}\n", self, instance, s)
         }
       })
     
@@ -211,33 +222,19 @@ trait Proposer extends ActorLogging {
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           decided onComplete {
             case Success(d) =>
-              var instance = proposed
               // If not proposed and not learned nothing yet in this instance
+              log.info(s"${self} -> DECIDED= ${d} , PROPOSED= ${proposed} and PROPOSEDIN= ${proposedIn}, trying value: ${msg.value}\n")
               if (!d.contains(proposed) && !proposedIn.contains(proposed)) {
-                proposedIn = proposedIn.insert(proposed)
+                self ! TryPropose(proposed, round, msg.value)
               } else {
                 // Not repropose Nil on the last valid instance, use it to a new value
-                val nilReproposalInstances = d.complement().dropLast
+             /*   val nilReproposalInstances = d.complement().dropLast
                 nilReproposalInstances.iterateOverAll(i => {
-                  proposedValueIn += (instance -> Nil)
-                  self ! Proposal(i, round, Some(VMap(self -> Nil)))
-                })
-                instance = d.next
-                proposed = instance
-                proposedIn = proposedIn.insert(instance)
-              }
-              proposedValueIn += (instance -> msg.value)
-              val s = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
-              s onComplete { 
-                case Success(state) => 
-                  log.info("{} PROPOSING VALUE {} IN INSTANCE {}\n",self, msg.value, instance)
-                // TODO: Repropose values not decided by the same cfproposer, save proposed values
-                  if (state.pval == None)
-                    self ! Proposal(instance, round, Some(VMap(self -> msg.value)))
-                  else
-                    self ! Proposal(instance, round, state.pval)
-                  context.become(proposerBehavior(config, instances + (instance -> Future.successful(state))))
-                case Failure(ex) => log.error("Instance return: ${s.isCompleted}. Because of a {}\n", ex.getMessage)
+                  log.info(s"Proposing NIL in instance: ${i}\n")
+                  self ! TryPropose(i, round, Nil)
+                })*/
+                val instance = d.next
+                self ! TryPropose(instance, round, msg.value)
               }
             case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
           }
@@ -249,6 +246,37 @@ trait Proposer extends ActorLogging {
       } else {
         log.info("Coordinator NOT FOUND for round {}", prnd)
       }
+
+    case msg @ TryPropose(instance, round, value) =>
+      try {
+        log.info("{} try to insert: {} in {} \n",self, instance, proposedIn)
+        proposedIn = proposedIn.insert(instance)
+        log.info("{} - SUCCESSFUL INSERT! Trying propose in: {} and with proposed in: {} and proposedValueIn: {} \n",self, instance, proposedIn, proposedValueIn)
+        proposed = instance
+        proposedValueIn += (instance -> Some(value))
+        // TODO: Repropose values not decided by the same cfproposer, save proposed values
+        // How to know if value was not decided!?
+        //val learned: Future[Values] = (self ? Proposal(self, instance, round, Some(VMap(self -> msg.value)))).mapTo[Values]
+        //learned.pipeTo(self)
+        log.info("{} PROPOSING VALUE {} IN INSTANCE {}\n",self, value, instance)
+        self ! Proposal(instance, round, Some(VMap(self -> value)))
+      } catch {
+        case e: ElementAlreadyExistsException => 
+          log.error(s"${self} throw exception when: ${e.getMessage}")
+          log.error(s"${self} Already proposed in instance ${instance}, trying propose ${value} again in other instance...")
+          self ! MakeProposal(value)         
+      }
+
+/*    case msg: Learned =>
+      //proposeRetry(self, instance, round, Some(VMap(self -> msg.value))).asInstanceOf[Future[Values]]
+      log.info("{} PROPOSED {} and LEARNED {}\n",self, msg.value, l)
+      if (msg.learned != msg.value) {
+        log.info(s"${self} Not learn the proposed value ${msg.value}, trying repropose...\n")
+        self ! MakeProposal(msg.value)
+      } else {
+        log.info(s"${self} Successful proposed and learned: ${l} \n")
+      }*/
+
   }
 }
 
@@ -264,10 +292,11 @@ class ProposerActor extends Actor with Proposer {
   // FIXME: This need to be Long?
   var proposed: Int = -1;
 
-  var proposedValueIn: Map[Int, Values] = Map()
+  var proposedValueIn: Map[Int, Option[Values]] = Map()
+
   var proposedIn: IRange = IRange()
 
-  var quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, Message]]()
+  val quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, Message]]()
 
   var coordinators: Set[ActorRef] = Set.empty[ActorRef]
 
@@ -275,5 +304,5 @@ class ProposerActor extends Actor with Proposer {
 
   def isCFProposerOf(round: Round): Boolean = (round.cfproposers contains self)
 
-  def receive = proposerBehavior(ClusterConfiguration(), Map())
+  def receive = proposerBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
 }
