@@ -1,14 +1,16 @@
 package cfabcast.agents
 
-import akka.actor._
 import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
-import scala.concurrent.Future
+
+import scala.concurrent.{ Future, Promise}
 import scala.concurrent.ExecutionContext
-import scala.util.Random
-import concurrent.Promise
 import scala.util.{Success, Failure}
+import scala.util.Random
+import scala.async.Async.{async, await}
+
+import akka.actor._
 
 trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
@@ -17,65 +19,60 @@ trait Acceptor extends ActorLogging {
     log.info("Acceptor ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
-    val newState = Promise[AcceptorMeta]()
+  def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val actorSender = sender  
-    state onComplete {
-      case Success(s) => // Cond 1
-                if (rnd <= msg.rnd) {
-                  if ((!msg.value.get.isEmpty && s.vrnd < msg.rnd) || s.vval == None) {
-                    log.debug(s"${self} Cond1 satisfied received MSG2S(${msg.value}) from ${actorSender}\n")
-                    self ! UpdateARound(msg.rnd)
-                    newState.success(s.copy(vrnd = msg.rnd, vval = msg.value))
-                    log.debug(s"${self} Update vval ${msg.value} in round ${msg.rnd}\n")
-                    config.learners foreach (_ ! Msg2B(msg.instance, rnd, s.vval))
-                  }
-                } else newState.success(s)
-      case Failure(ex) => log.info("2B1 Promise fail, not update State. Because of a {}\n", ex.getMessage)
-
+    val oldState = await(state)
+    // Cond 1
+    if (rnd <= msg.rnd) {
+      if ((!msg.value.get.isEmpty && oldState.vrnd < msg.rnd) || oldState.vval == None) {
+        log.debug(s"${self} Cond1 satisfied received MSG2S(${msg.value}) from ${actorSender}\n")
+        self ! UpdateARound(msg.rnd)
+        val newState = oldState.copy(vrnd = msg.rnd, vval = msg.value)
+        log.debug(s"${self} Update vval ${msg.value} in round ${msg.rnd}\n")
+        config.learners foreach (_ ! Msg2B(msg.instance, rnd, newState.vval))
+        newState
+      } else {
+        oldState
+      }
+    } else {
+      //TODO: update my round to greatest seen
+      oldState
     }
-    newState.future
   }
 
-  def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
-    val newState = Promise[AcceptorMeta]()
+  def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val actorSender = sender  
-    state onComplete {
-      case Success(s) => // Cond 2
-              if (rnd <= msg.rnd && msg.value.get.get(actorSender) != Nil) {
-                log.debug(s"${self} Cond2 satisfied received MSG2A(${msg.value}) from ${actorSender}\n")
-                var value = VMap[Values]()
-                if (s.vrnd < msg.rnd || s.vval == None) {
-                  // extends value and put Nil for all proposers
-                  value = msg.value.get
-                  for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
-                  log.debug(s"${self} Extending vval with nil ${value} in round ${msg.rnd}\n")
-                } else {
-                  value = s.vval.get ++ msg.value.get
-                  log.debug(s"${self} Extending vval with msg.value ${value} in round ${msg.rnd}\n")
-                }
-                newState.success(s.copy(vrnd = msg.rnd, vval = Some(value)))
-                self ! UpdateARound(msg.rnd)
-                config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, Some(value)))
-              } else newState.success(s)
-      case Failure(ex) => log.error(s"2B2 Promise fail, not update State. Because of a {}\n", ex.getMessage)
+    val oldState = await(state)
+    if (rnd <= msg.rnd && msg.value.get.get(actorSender) != Nil) {
+      log.debug(s"${self} Cond2 satisfied received MSG2A(${msg.value}) from ${actorSender}\n")
+      // FIXME: Is thread-safe do this!?
+      var value = VMap[Values]()
+      if (oldState.vrnd < msg.rnd || oldState.vval == None) {
+        // extends value and put Nil for all proposers
+        value = msg.value.get
+        for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
+        log.debug(s"${self} Extending vval with nil ${value} in round ${msg.rnd}\n")
+      } else {
+        value = oldState.vval.get ++ msg.value.get
+        log.debug(s"${self} Extending vval with msg.value ${value} in round ${msg.rnd}\n")
+      }
+      val newState = oldState.copy(vrnd = msg.rnd, vval = Some(value))
+      self ! UpdateARound(msg.rnd)
+      config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, newState.vval))
+      newState
+    } else {
+      oldState
     }
-    newState.future
   }
  
-  def phase1B(msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
-    val newState = Promise[AcceptorMeta]()
+  def phase1B(msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val actorSender = sender
-    state onComplete {
-      case Success(s) => 
-                if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
-                  self ! UpdateARound(msg.rnd)
-                  actorSender ! Msg1B(msg.instance, msg.rnd, s.vrnd, s.vval)
-                }
-                newState.success(s)
-      case Failure(ex) => log.error("1B Promise fail, not update State. Because of a {}\n", ex.getMessage)
+    val oldState = await(state)
+    if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
+      self ! UpdateARound(msg.rnd)
+      actorSender ! Msg1B(msg.instance, msg.rnd, oldState.vrnd, oldState.vval)
     }
-    newState.future
+    oldState
   }
 
   def acceptorBehavior(config: ClusterConfiguration, instances: Map[Int, Future[AcceptorMeta]])(implicit ec: ExecutionContext): Receive = {

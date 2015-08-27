@@ -1,13 +1,15 @@
 package cfabcast.agents
 
-import akka.actor._
 import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
-import scala.concurrent.Future
+
+import scala.concurrent.{ Future, Promise }
 import scala.concurrent.ExecutionContext
-import concurrent.Promise
 import scala.util.{Success, Failure}
+import scala.async.Async.{async, await}
+
+import akka.actor._
 
 trait Learner extends ActorLogging {
   this: LearnerActor =>
@@ -16,28 +18,25 @@ trait Learner extends ActorLogging {
     log.info("Learner ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = {
-    val newState = Promise[LearnerMeta]()
-    state onComplete {
-      case Success(s) =>
-                // TODO: verify learner round!?
-                val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
-                log.info(s"Quorum in ${self} is ${quorum} size ${quorum.size}\n")
-                if (quorum.size >= config.quorumSize) {
-                  val Q2bVals = quorum.values.toList
-                  var value = VMap[Values]()
-                  for (p <- pPerInstance.getOrElse(msg.instance, scala.collection.mutable.Set())) value += (p -> Nil)
-                  val w: VMap[Values] = VMap.glb(Q2bVals) ++ value
-                  // TODO: Speculative execution
-                  val Slub: List[VMap[Values]] = List(s.learned.get, w)
-                  val lubVals: VMap[Values] = VMap.lub(Slub)
-                  newState.success(s.copy(learned = Some(lubVals)))
-                  self ! InstanceLearned(msg.instance, Some(lubVals))
-                } 
-                else newState.success(s)
-      case Failure(ex) => log.error("Learn Promise fail, not update State. Because of a {}\n", ex.getMessage)
+  def learn(msg: Msg2B, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = async {
+    val oldState = await(state)
+    // TODO: verify learner round!?
+    val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
+    log.info(s"Quorum in ${self} is ${quorum} size ${quorum.size}\n")
+    if (quorum.size >= config.quorumSize) {
+      val Q2bVals = quorum.values.toList
+      var value = VMap[Values]()
+      for (p <- pPerInstance.getOrElse(msg.instance, scala.collection.mutable.Set())) value += (p -> Nil)
+      val w: VMap[Values] = VMap.glb(Q2bVals) ++ value
+      // TODO: Speculative execution
+      val Slub: List[VMap[Values]] = List(oldState.learned.get, w)
+      val lubVals: VMap[Values] = VMap.lub(Slub)
+      val newState = oldState.copy(learned = Some(lubVals))
+      self ! InstanceLearned(msg.instance, Some(lubVals))
+      newState
+    } else { 
+      oldState
     }
-    newState.future
   }
 
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {

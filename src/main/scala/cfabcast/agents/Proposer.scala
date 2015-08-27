@@ -1,17 +1,19 @@
 package cfabcast.agents
 
-import akka.actor._
 import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
-import scala.concurrent.Future
+
+import scala.concurrent.{Future, Promise}
 import scala.concurrent.ExecutionContext
 import scala.util.Random
-import akka.util.Timeout
 import scala.concurrent.duration._
-import concurrent.Promise
 import scala.util.{Success, Failure}
+import scala.async.Async.{async, await}
+
+import akka.actor._
 import akka.pattern.ask
+import akka.util.Timeout
 import akka.pattern.AskTimeoutException
 
 trait Proposer extends ActorLogging {
@@ -21,106 +23,90 @@ trait Proposer extends ActorLogging {
     log.info("Proposer ID: {} UP on {}\n", self.hashCode, self.path)
   }
 
-  def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
-    val newState = Promise[ProposerMeta]()
-    state onComplete {
-      case Success(s) =>
-                  if (isCoordinatorOf(msg.rnd) && crnd < msg.rnd) {
-                    newState.success(ProposerMeta(s.pval, None))
-                    self ! UpdatePRound(prnd, msg.rnd)
-                    config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
-                  } else {
-                    newState.success(s)
-                  }
-      case Failure(ex) => log.error("1A Promise execution fail, not update State. Because of a {}", ex.getMessage)
+  def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
+    val oldState = await(state)
+    if (isCoordinatorOf(msg.rnd) && crnd < msg.rnd) {
+      val newState = oldState.copy(pval= oldState.pval, cval = None)
+      self ! UpdatePRound(prnd, msg.rnd)
+      config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
+      newState
+    } else {
+      oldState
     }
-    newState.future
   }
   
-  def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
-    val newState = Promise[ProposerMeta]()
-    state onComplete {
-      case Success(s) =>
-                  if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.get.get(self) != Nil) {
-                    // Phase 2A for CFProposers
-                    newState.success(s.copy(pval = msg.value))
-                    log.info("{}: UPDATE PVAL:{} TO: {} in instance: {}", self, s.pval, msg.value, msg.instance)
-                    ((msg.rnd.cfproposers diff Set(self)) union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
-                  } else {
-                    newState.success(s) 
-                    // Try repropose this value
-                    log.info(s"${self} received proposal ${msg}, but not able to propose, because: \n isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${s.pval}\n")
-                    //FIXME: Find a better way to do this!
-                    self ! MakeProposal(msg.value.get.get(self).get)     
-                  }
-      case Failure(ex) => log.error("Propose promise execution fail, not update State. Because of a {}", ex.getMessage)
+  def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
+    val oldState = await(state)
+    if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None) && msg.value.get.get(self) != Nil) {
+      // Phase 2A for CFProposers
+      val newState = oldState.copy(pval = msg.value)
+      log.info("{}: UPDATE PVAL:{} TO: {} in instance: {}", self, newState.pval, msg.value, msg.instance)
+      ((msg.rnd.cfproposers diff Set(self)) union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
+      newState
+    } else {
+      // Try repropose this value
+      log.info(s"${self} received proposal ${msg}, but not able to propose, because: \n isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}\n")
+      //FIXME: Find a better way to do this!
+      self ! MakeProposal(msg.value.get.get(self).get)     
+      oldState
     }
-    newState.future
   }
-  
-  def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
-    val newState = Promise[ProposerMeta]()
+ 
+  def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val actorSender = sender
-    state onComplete {
-      case Success(s) =>
-        //FIXME msg.value can be None
-        if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.get.get(actorSender) != Nil) {
-          log.info(s"${self} sending NIL to learners")
-          val nil = Some(VMap[Values](self -> Nil))
-          newState.success(s.copy(pval = nil))
-          (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, nil))
-        } else {
-          newState.success(s)
-        }
-      case Failure(ex) => log.error("2A Promise execution fail, not update State. Because of a {}\n", ex.getMessage)
+    val oldState = await(state)
+    if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None && msg.value.get.get(actorSender) != Nil) {
+      val nil = Some(VMap[Values](self -> Nil))
+      (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, nil))
+      val newState = oldState.copy(pval = nil)
+      newState
+    } else {
+      oldState
     }
-    newState.future
   }
 
-  def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
-    val newState = Promise[ProposerMeta]()
-    state onComplete {
-      case Success(s) =>
-          val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
-          if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && s.cval == None) {
-            val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
-            val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
-            val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
-            //TODO: add msg.value to S
-            if(S.isEmpty) {
-              newState.success(s.copy(cval = Some(VMap[Values]()))) //Bottom vmap
-              config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
-            } else {
-              var value = VMap[Values]()
-              for (p <- config.proposers) value += (p -> Nil) 
-              val cval: VMap[Values] = VMap.lub(S) ++: value
-              newState.success(s.copy(cval = Some(cval)))
-              (config.proposers union config.acceptors).foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(cval)))
-            }
-          } else newState.success(s)
-      case Failure(ex) => log.error("2Start Promise execution fail, not update State. Because of a {}\n", ex.getMessage)
+  def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
+    val actorSender = sender
+    val oldState = await(state)
+    //FIXME: This quorum need to be similar to learners quorum
+    val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
+    if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && oldState.cval == None) {
+      val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
+      val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
+      val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
+      if(S.isEmpty) {
+        val newState = oldState.copy(cval = Some(VMap[Values]())) //Bottom vmap
+        config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
+        newState
+      } else {
+        var value = VMap[Values]()
+        for (p <- config.proposers) value += (p -> Nil) 
+        val cval: VMap[Values] = VMap.lub(S) ++: value
+        val newState = oldState.copy(cval = Some(cval))
+        (config.proposers union config.acceptors).foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(cval)))
+        newState
+      }
+    } else {
+      oldState
     }
-    newState.future
   }  
 
-  def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = {
-    val newState = Promise[ProposerMeta]()
+  def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
+    val oldState = await(state)
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
-    state onComplete {
-      case Success(s) =>
-        if(prnd < msg.rnd) {
-          if(msg.value.get.isEmpty) {
-            newState.success(s.copy(pval = None))
-            self ! UpdatePRound(msg.rnd, crnd)
-          }
-          else {
-            newState.success(s.copy(pval = msg.value))
-            self ! UpdatePRound(msg.rnd, crnd)
-          }
-        } else newState.success(s)
-      case Failure(ex) => log.error("2Prepare Promise execution fail, not update State. Because of a {}\n", ex.getMessage)
+    if(prnd < msg.rnd) {
+      if(msg.value.get.isEmpty) {
+        val newState = oldState.copy(pval = None)
+        self ! UpdatePRound(msg.rnd, crnd)
+        newState
+      } else {
+        val newState = oldState.copy(pval = msg.value)
+        self ! UpdatePRound(msg.rnd, crnd)
+        newState
+      }
+    } else {
+      oldState
     }
-    newState.future
   }
 
   def getRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
@@ -136,6 +122,7 @@ trait Proposer extends ActorLogging {
 */
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[ProposerMeta]])(implicit ec: ExecutionContext): Receive = {
     case GetState =>
+      //TODO: async here!
       instances.foreach({case (instance, state) => 
         state onSuccess {
           case s => log.info("{}: INSTANCE: {} -- STATE: {}\n", self, instance, s)
@@ -165,6 +152,7 @@ trait Proposer extends ActorLogging {
           implicit val timeout = Timeout(1 seconds)
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
+          // TODO: async everywhere!!!!
           cfpSet onComplete {
             case Success(cfp) => 
               decided onComplete {
@@ -199,6 +187,8 @@ trait Proposer extends ActorLogging {
 
     case msg: Msg1B =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+      //FIXME: Change this to be like learners quorum!
+      // WRONG!!! Override msgs for the same sender!
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
       quorumPerInstance(msg.instance) += (sender -> msg)
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, state, config))))
@@ -248,6 +238,7 @@ trait Proposer extends ActorLogging {
           cfps.toVector(Random.nextInt(cfps.size)) forward msg
         }
       } else {
+        //TODO: Rerun leader election!
         log.info("Coordinator NOT FOUND for round {}", prnd)
       }
 
