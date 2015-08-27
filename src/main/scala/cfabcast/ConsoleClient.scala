@@ -8,8 +8,7 @@ import cfabcast.messages._
 class ConsoleClient extends Actor {
   
   def receive = {
-    case StartConsole =>
-      handleInput
+    case StartConsole => handleInput
   }
 
   def handleInput = {

@@ -29,7 +29,9 @@ trait Proposer extends ActorLogging {
                     newState.success(ProposerMeta(s.pval, None))
                     self ! UpdatePRound(prnd, msg.rnd)
                     config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
-                  } else newState.success(s)
+                  } else {
+                    newState.success(s)
+                  }
       case Failure(ex) => log.error("1A Promise execution fail, not update State. Because of a {}", ex.getMessage)
     }
     newState.future
@@ -39,13 +41,17 @@ trait Proposer extends ActorLogging {
     val newState = Promise[ProposerMeta]()
     state onComplete {
       case Success(s) =>
-                  if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.getOrElse(self, None) != Nil) {
+                  if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.get.get(self) != Nil) {
                     // Phase 2A for CFProposers
                     newState.success(s.copy(pval = msg.value))
                     log.info("{}: UPDATE PVAL:{} TO: {} in instance: {}", self, s.pval, msg.value, msg.instance)
-                    (msg.rnd.cfproposers union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
+                    ((msg.rnd.cfproposers diff Set(self)) union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
                   } else {
                     newState.success(s) 
+                    // Try repropose this value
+                    log.info(s"${self} received proposal ${msg}, but not able to propose, because: \n isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${s.pval}\n")
+                    //FIXME: Find a better way to do this!
+                    self ! MakeProposal(msg.value.get.get(self).get)     
                   }
       case Failure(ex) => log.error("Propose promise execution fail, not update State. Because of a {}", ex.getMessage)
     }
@@ -57,11 +63,9 @@ trait Proposer extends ActorLogging {
     val actorSender = sender
     state onComplete {
       case Success(s) =>
-        // FIXME: msg.value.get(sender) need to be Nil to execute this!?
-        // This is never executed!!! because the msg.value never equals to Nil
-        if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None && msg.value.getOrElse(actorSender, None) == Nil) {
-          // if msg.value.getOrElse(actorSender, None) != Nil, then someone proposed anything in this current instance
-          // so this cfp need to force send Nil to learners instead of msg.value, or not?
+        //FIXME msg.value can be None
+        if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && s.pval == None) && msg.value.get.get(actorSender) != Nil) {
+          log.info(s"${self} sending NIL to learners")
           val nil = Some(VMap[Values](self -> Nil))
           newState.success(s.copy(pval = nil))
           (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, nil))
@@ -84,14 +88,14 @@ trait Proposer extends ActorLogging {
             val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
             //TODO: add msg.value to S
             if(S.isEmpty) {
-              config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
               newState.success(s.copy(cval = Some(VMap[Values]()))) //Bottom vmap
+              config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
             } else {
               var value = VMap[Values]()
               for (p <- config.proposers) value += (p -> Nil) 
               val cval: VMap[Values] = VMap.lub(S) ++: value
-              (config.proposers union config.acceptors).foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(cval)))
               newState.success(s.copy(cval = Some(cval)))
+              (config.proposers union config.acceptors).foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(cval)))
             }
           } else newState.success(s)
       case Failure(ex) => log.error("2Start Promise execution fail, not update State. Because of a {}\n", ex.getMessage)
@@ -228,7 +232,7 @@ trait Proposer extends ActorLogging {
                 self ! TryPropose(proposed, round, msg.value)
               } else {
                 // Not repropose Nil on the last valid instance, use it to a new value
-             /*   val nilReproposalInstances = d.complement().dropLast
+              /*  val nilReproposalInstances = d.complement().dropLast
                 nilReproposalInstances.iterateOverAll(i => {
                   log.info(s"Proposing NIL in instance: ${i}\n")
                   self ! TryPropose(i, round, Nil)
@@ -262,8 +266,8 @@ trait Proposer extends ActorLogging {
         self ! Proposal(instance, round, Some(VMap(self -> value)))
       } catch {
         case e: ElementAlreadyExistsException => 
-          log.error(s"${self} throw exception when: ${e.getMessage}")
-          log.error(s"${self} Already proposed in instance ${instance}, trying propose ${value} again in other instance...")
+          log.warning(s"${self} throw exception when: ${e.getMessage}")
+          log.warning(s"${self} Already proposed in instance ${instance}, trying propose ${value} again in other instance...")
           self ! MakeProposal(value)         
       }
 

@@ -23,10 +23,6 @@ trait Learner extends ActorLogging {
                 // TODO: verify learner round!?
                 val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
                 log.info(s"Quorum in ${self} is ${quorum} size ${quorum.size}\n")
-//                val msg2BOccurrences = quorum.values.flatten.groupBy(identity).mapValues(_.size)
-//                val meetsQuorumRequirements = msg2BOccurrences.filter({ case (_, qtd) => qtd >= config.quorumSize })
-//                Remove messages with decided values
-//                meetsQuorumRequirements.foreach({ case (k, _) => quorum.map({ case (_, v) => v -= k}) })
                 if (quorum.size >= config.quorumSize) {
                   val Q2bVals = quorum.values.toList
                   var value = VMap[Values]()
@@ -47,11 +43,14 @@ trait Learner extends ActorLogging {
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
     case msg: Msg2A =>
       if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
+        log.info(s"Receive NIL from ${sender} for instance ${msg.instance}\n")
         pPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Set())
         pPerInstance(msg.instance) += sender
+        log.info(s"NILs received: ${pPerInstance}\n")
       }
 
     case msg: Msg2B =>
+      //FIXME: Implement quorum as a prefix tree
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
       val vm = quorumPerInstance(msg.instance).getOrElse(sender, VMap[Values]())
       // Replaces values proposed previously by the same proposer on the same instance
@@ -71,7 +70,7 @@ trait Learner extends ActorLogging {
         }
       })
 
-    //FIXME: notify all values one time only
+    //FIXME: notify all values learned, one time only
     case InstanceLearned(instance, learned) =>
       try {
         instancesLearned = instancesLearned.insert(instance)
@@ -80,7 +79,7 @@ trait Learner extends ActorLogging {
         log.info("{} LEARNED: {}\n",self, instancesLearned)
       } catch {
         case e: ElementAlreadyExistsException => 
-          log.info("Instance Already learned, not send response")
+          log.warning("Instance Already learned, not send response")
       }
 
     case msg: UpdateConfig =>

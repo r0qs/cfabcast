@@ -42,7 +42,7 @@ trait Acceptor extends ActorLogging {
     val actorSender = sender  
     state onComplete {
       case Success(s) => // Cond 2
-              if (rnd <= msg.rnd && msg.value.getOrElse(actorSender, None) != Nil) {
+              if (rnd <= msg.rnd && msg.value.get.get(actorSender) != Nil) {
                 log.debug(s"${self} Cond2 satisfied received MSG2A(${msg.value}) from ${actorSender}\n")
                 var value = VMap[Values]()
                 if (s.vrnd < msg.rnd || s.vval == None) {
@@ -54,8 +54,8 @@ trait Acceptor extends ActorLogging {
                   value = s.vval.get ++ msg.value.get
                   log.debug(s"${self} Extending vval with msg.value ${value} in round ${msg.rnd}\n")
                 }
-                self ! UpdateARound(msg.rnd)
                 newState.success(s.copy(vrnd = msg.rnd, vval = Some(value)))
+                self ! UpdateARound(msg.rnd)
                 config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, Some(value)))
               } else newState.success(s)
       case Failure(ex) => log.error(s"2B2 Promise fail, not update State. Because of a {}\n", ex.getMessage)
@@ -65,13 +65,12 @@ trait Acceptor extends ActorLogging {
  
   def phase1B(msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = {
     val newState = Promise[AcceptorMeta]()
-    // TODO: verify if sender is a coordinatior, how? i don't really know yet
     val actorSender = sender
     state onComplete {
       case Success(s) => 
                 if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
-                  actorSender ! Msg1B(msg.instance, msg.rnd, s.vrnd, s.vval)
                   self ! UpdateARound(msg.rnd)
+                  actorSender ! Msg1B(msg.instance, msg.rnd, s.vrnd, s.vval)
                 }
                 newState.success(s)
       case Failure(ex) => log.error("1B Promise fail, not update State. Because of a {}\n", ex.getMessage)
@@ -90,8 +89,6 @@ trait Acceptor extends ActorLogging {
     case msg: UpdateARound => rnd = msg.rnd
 
     // Phase1B
-    // For this instance and round the sender need to be a coordinator
-    // Make this verification for all possible instances
     case msg: Msg1A =>
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(msg, state, config))))
@@ -104,12 +101,10 @@ trait Acceptor extends ActorLogging {
       })*/
 
     // Phase2B
-    // FIXME: Execute this once!!
     case msg: Msg2S =>
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B1(msg, state, config))))
     
-    // FIXME: data.value(sender) != Nil -> how to unique identify actors? using actorref?
     case msg: Msg2A =>
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(msg, state, config))))
