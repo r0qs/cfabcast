@@ -13,11 +13,11 @@ object Main {
   def main(args: Array[String]): Unit = {
     val port = if (args.isEmpty) "0" else args(0)
     val config = ConfigFactory.parseString(s"akka.remote.netty.tcp.port=$port").
-      withFallback(ConfigFactory.parseString("akka.cluster.roles = [cfabcast, proposer, acceptor, learner]")).
       withFallback(ConfigFactory.load())
     val system = ActorSystem("CFABCastSystem", config)
-    //TODO: Use Akka configuration: http://doc.akka.io/docs/akka/2.3.12/general/configuration.html
-    val node = system.actorOf(Node.props(3, Map("proposer" -> 1, "acceptor" -> 1, "learner" -> 1)), "node")
+    val settings = Settings(system)
+    println(s"SETTINGS: ${settings.MinNrOfAgentsOfRole} :and: ${settings.NrOfAgentsOfRoleOnNode}\n")
+    val node = system.actorOf(Node.props(settings.MinNrOfAgentsOfRole("acceptor"), settings.NrOfAgentsOfRoleOnNode), "node")
 
     //For test:
     node ! StartConsole

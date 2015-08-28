@@ -205,6 +205,7 @@ trait Proposer extends ActorLogging {
 
     case msg: MakeProposal =>
       // update the grnd
+      log.info(s"MY ROUND IS: PRND:${prnd} CRND:${crnd} GRND:${grnd} \n")
       if(prnd.coordinator.nonEmpty) {
         var round = prnd
         if (grnd > prnd) {
