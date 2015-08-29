@@ -20,15 +20,12 @@ trait Acceptor extends ActorLogging {
   }
 
   def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
-    val actorSender = sender  
     val oldState = await(state)
     // Cond 1
     if (rnd <= msg.rnd) {
       if ((!msg.value.get.isEmpty && oldState.vrnd < msg.rnd) || oldState.vval == None) {
-        log.debug(s"${self} Cond1 satisfied received MSG2S(${msg.value}) from ${actorSender}\n")
         self ! UpdateARound(msg.rnd)
         val newState = oldState.copy(vrnd = msg.rnd, vval = msg.value)
-        log.debug(s"${self} Update vval ${msg.value} in round ${msg.rnd}\n")
         config.learners foreach (_ ! Msg2B(msg.instance, rnd, newState.vval))
         newState
       } else {
@@ -40,8 +37,7 @@ trait Acceptor extends ActorLogging {
     }
   }
 
-  def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
-    val actorSender = sender  
+  def phase2B2(actorSender: ActorRef, msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (rnd <= msg.rnd && msg.value.get.get(actorSender) != Nil) {
       log.debug(s"${self} Cond2 satisfied received MSG2A(${msg.value}) from ${actorSender}\n")
@@ -64,9 +60,9 @@ trait Acceptor extends ActorLogging {
       oldState
     }
   }
- 
-  def phase1B(msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
-    val actorSender = sender
+  // FIXME: need to pass sender to functions!!!! not use self and sender inside async! 
+  def phase1B(actorSender: ActorRef, msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
+    log.info(s"${self} receive msg 1A from ${actorSender} \n")
     val oldState = await(state)
     if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
       self ! UpdateARound(msg.rnd)
@@ -83,12 +79,12 @@ trait Acceptor extends ActorLogging {
         }
       })
 
-    case msg: UpdateARound => rnd = msg.rnd
+    case msg: UpdateARound => if(msg.rnd > rnd) rnd = msg.rnd
 
     // Phase1B
     case msg: Msg1A =>
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
-      context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(msg, state, config))))
+      context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(sender, msg, state, config))))
 
 /*    case msg: Msg1Am =>
       log.info("Received MSG1A from {}\n", sender.hashCode)
@@ -104,7 +100,7 @@ trait Acceptor extends ActorLogging {
     
     case msg: Msg2A =>
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
-      context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(msg, state, config))))
+      context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(sender, msg, state, config))))
     
     // TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>

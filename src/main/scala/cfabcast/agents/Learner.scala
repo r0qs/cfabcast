@@ -41,6 +41,7 @@ trait Learner extends ActorLogging {
 
   // FIXME: Clean quorums when receive msgs from all agents of the instance
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
+
     case msg: Msg2A =>
       if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
         log.info(s"Receive NIL from ${sender} for instance ${msg.instance}\n")

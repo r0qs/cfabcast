@@ -52,8 +52,7 @@ trait Proposer extends ActorLogging {
     }
   }
  
-  def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val actorSender = sender
+  def phase2A(actorSender: ActorRef, msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
     if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None && msg.value.get.get(actorSender) != Nil) {
       val nil = Some(VMap[Values](self -> Nil))
@@ -66,7 +65,6 @@ trait Proposer extends ActorLogging {
   }
 
   def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val actorSender = sender
     val oldState = await(state)
     //FIXME: This quorum need to be similar to learners quorum
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
@@ -129,8 +127,8 @@ trait Proposer extends ActorLogging {
         }
       })
     
-    case msg: UpdatePRound =>
-      log.debug("My prnd: {} crnd: {} -- Updating to prnd {} crnd: {}\n", prnd, crnd, msg.prnd, msg.crnd)
+    case msg: UpdatePRound => 
+      log.info("My prnd: {} crnd: {} -- Updating to prnd {} crnd: {}\n", prnd, crnd, msg.prnd, msg.crnd)
       if(prnd < msg.prnd) {
         prnd = msg.prnd
         grnd = msg.prnd
@@ -138,7 +136,7 @@ trait Proposer extends ActorLogging {
       if(crnd < msg.crnd) {
         crnd = msg.crnd
         grnd = msg.crnd
-      }  
+      }
 
     case NewLeader(newCoordinators: Set[ActorRef], until: Int) =>
       //TODO: Update the prnd with the new coordinator
@@ -159,11 +157,10 @@ trait Proposer extends ActorLogging {
                 case Success(d) => 
                   d.complement().iterateOverAll(i => {
                     val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
-                    // FIXME: This is not thread-safe
-                    grnd = Round(getRoundCount, Set(self), cfp)
-                    log.info(s"GRND: ${grnd}\n")
-                    val msg = Configure(i, grnd)
-                    context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
+                    val rnd = Round(getRoundCount, Set(self), cfp)
+                    val msg = Configure(i, rnd)
+                    log.info(s"Try exec CONFIGURE in INSTANCE: ${i} using ROUND: ${rnd}\n")
+                   context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
                   })
                 case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
               }
@@ -183,7 +180,7 @@ trait Proposer extends ActorLogging {
 
     case msg: Msg2A =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
-      context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(msg, state, config))))
+      context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(sender, msg, state, config))))
 
     case msg: Msg1B =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
@@ -277,7 +274,6 @@ trait Proposer extends ActorLogging {
 }
 
 class ProposerActor extends Actor with Proposer {
-  
   // Greatest known round
   var grnd: Round = Round()
   // Proposer current round

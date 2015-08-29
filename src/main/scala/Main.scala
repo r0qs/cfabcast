@@ -16,7 +16,6 @@ object Main {
       withFallback(ConfigFactory.load())
     val system = ActorSystem("CFABCastSystem", config)
     val settings = Settings(system)
-    println(s"SETTINGS: ${settings.MinNrOfAgentsOfRole} :and: ${settings.NrOfAgentsOfRoleOnNode}\n")
     val node = system.actorOf(Node.props(settings.MinNrOfAgentsOfRole("acceptor"), settings.NrOfAgentsOfRoleOnNode), "node")
 
     //For test:
