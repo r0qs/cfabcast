@@ -44,10 +44,8 @@ trait Learner extends ActorLogging {
 
     case msg: Msg2A =>
       if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
-        log.info(s"Receive NIL from ${sender} for instance ${msg.instance}\n")
         pPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Set())
         pPerInstance(msg.instance) += sender
-        log.info(s"NILs received: ${pPerInstance}\n")
       }
 
     case msg: Msg2B =>
@@ -61,7 +59,6 @@ trait Learner extends ActorLogging {
 
 
     case WhatULearn =>
-      // TODO: Send interval of learned instances
       sender ! instancesLearned
     
     case GetState =>

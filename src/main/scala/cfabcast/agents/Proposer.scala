@@ -58,6 +58,7 @@ trait Proposer extends ActorLogging {
       val nil = Some(VMap[Values](self -> Nil))
       (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, nil))
       val newState = oldState.copy(pval = nil)
+      log.info(s"Proposer ${self} fast-propose NIL in instance ${msg.instance} because receive 2A from: ${actorSender}\n")
       newState
     } else {
       oldState
@@ -175,7 +176,6 @@ trait Proposer extends ActorLogging {
 
     case msg: Proposal =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
-      // TODO: Make this lazy and chain instances
       context.become(proposerBehavior(config, instances + (msg.instance -> propose(msg, state, config))))
 
     case msg: Msg2A =>
@@ -187,6 +187,7 @@ trait Proposer extends ActorLogging {
       //FIXME: Change this to be like learners quorum!
       // WRONG!!! Override msgs for the same sender!
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
+      // Replaces msg 1B sent previously by the same acceptor in the same instance
       quorumPerInstance(msg.instance) += (sender -> msg)
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, state, config))))
 
@@ -211,7 +212,9 @@ trait Proposer extends ActorLogging {
         if (isCFProposerOf(round)) {
           proposed += 1
           implicit val timeout = Timeout(1 seconds)
+          // Synchronize here ?
           val decided: Future[IRange] = ask(config.learners.head, WhatULearn).mapTo[IRange]
+          //val d = Await.result(decided, timeout.duration).asInstanceOf[IRange]
           decided onComplete {
             case Success(d) =>
               // If not proposed and not learned nothing yet in this instance
@@ -220,11 +223,11 @@ trait Proposer extends ActorLogging {
                 self ! TryPropose(proposed, round, msg.value)
               } else {
                 // Not repropose Nil on the last valid instance, use it to a new value
-              /*  val nilReproposalInstances = d.complement().dropLast
+                val nilReproposalInstances = d.complement().dropLast
                 nilReproposalInstances.iterateOverAll(i => {
                   log.info(s"Proposing NIL in instance: ${i}\n")
                   self ! TryPropose(i, round, Nil)
-                })*/
+                })
                 val instance = d.next
                 self ! TryPropose(instance, round, msg.value)
               }
