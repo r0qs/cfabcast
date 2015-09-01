@@ -22,6 +22,9 @@
         <!-- Safely log to the same file from multiple JVMs.
           TODO remove this because degrades performance! -->
         <prudent>true</prudent>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>DEBUG</level>
+        </filter>
     </appender>
 
 
@@ -34,20 +37,23 @@
         </encoder>
         <!-- Only log level INFO and above -->
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
-            <level>DEBUG</level>
+            <level>INFO</level>
         </filter>
     </appender>
 
 
     <!-- Enable FILE and STDOUT appenders for all log messages.
          By default, only log at level INFO and above. -->
-    <root level="DEBUG">
+    <!--root level="DEBUG">
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDOUT"/>
-    </root>
+    </root-->
 
     <!-- For loggers in the these namespaces, log at all levels. -->
-    <logger name="user" level="ALL"/>
+    <logger name="cfabcast" level="ALL">
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="STDOUT"/>
+    </logger>
     <!-- To log pedestal internals, enable this and change ThresholdFilter to DEBUG
     <logger name="pedestal" level="ALL" />
     -->

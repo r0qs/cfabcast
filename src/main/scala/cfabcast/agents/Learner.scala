@@ -22,7 +22,7 @@ trait Learner extends ActorLogging {
     val oldState = await(state)
     // TODO: verify learner round!?
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
-    log.info(s"Quorum in ${self} is ${quorum} size ${quorum.size}\n")
+    log.debug(s"MSG2B - Quorum in ${self} is ${quorum} size ${quorum.size}\n")
     if (quorum.size >= config.quorumSize) {
       val Q2bVals = quorum.values.toList
       var value = VMap[Values]()
@@ -35,6 +35,7 @@ trait Learner extends ActorLogging {
       self ! InstanceLearned(msg.instance, Some(lubVals))
       newState
     } else { 
+      log.debug(s"MSG2B - ${self} Quorum requirements not satisfied: ${quorum.size}\n")
       oldState
     }
   }
@@ -43,17 +44,21 @@ trait Learner extends ActorLogging {
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
 
     case msg: Msg2A =>
+      log.debug(s"${self} receive ${msg} from ${sender}\n")
       if (msg.value.get(sender) == Nil && msg.rnd.cfproposers(sender)) {
         pPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Set())
         pPerInstance(msg.instance) += sender
+        log.debug(s"MSG2A - ${self} add ${sender} to pPerInstance in INSTANCE ${msg.instance}\n")
       }
 
     case msg: Msg2B =>
+      log.debug(s"${self} receive ${msg} from ${sender}\n")
       //FIXME: Implement quorum as a prefix tree
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
       val vm = quorumPerInstance(msg.instance).getOrElse(sender, VMap[Values]())
       // Replaces values proposed previously by the same proposer on the same instance
       quorumPerInstance(msg.instance) += (sender -> (vm ++ msg.value.get))
+      log.debug(s"MSG2B - ${self} add to ${sender} in INSTANCE ${msg.instance} value: ${msg.value.get} to VMap: ${vm}\n")
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()))))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg, state, config))))
 
