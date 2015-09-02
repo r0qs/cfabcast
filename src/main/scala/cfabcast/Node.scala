@@ -95,7 +95,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     // FIXME: Remove this awful test
     case Command(cmd: String) =>
-      log.info("Received COMMAND {} \n", cmd)
+      log.info("Received COMMAND {} ", cmd)
       cmd match {
         case "pstate" => proposers.foreach(_ ! GetState) 
         case "astate" => acceptors.foreach(_ ! GetState) 
@@ -107,27 +107,28 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
         case _ => self ! Broadcast(serializer.toBinary(cmd))
       }
     case Broadcast(data) =>
+      //TODO: Use stash to store messages for further processing
       if(waitFor <= config.acceptors.size) {
-        log.info("Receive proposal: {} from {} and sending to {}\n", serializer.fromBinary(data),sender, proposers)
+        log.info("Receive proposal: {} from {} and sending to {}", serializer.fromBinary(data),sender, proposers)
         // TODO: Clients must be associated with a proposer
         // and servers with a learner (cluster client)
         proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
       }
       else
-        log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...\n", config.acceptors.size)
+        log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
 
     case Learned(learnedValues) =>
       val vmap = learnedValues.get
       if(vmap == None)
-        log.info("Nothing learned yet! VMAP is BOTTOM! = {} \n", vmap)
+        log.info("Nothing learned yet! VMAP is BOTTOM! = {} ", vmap)
       else {
-        log.info("Received Learned from {} with VMAP = {} \n", sender, vmap)
+        log.info("Received Learned from {} with VMAP = {} ", sender, vmap)
         servers.foreach( server => { 
-          log.info("Sending response to server: {} \n", server)
+          log.info("Sending response to server: {} ", server)
           vmap.foreach({ case (_, v) => v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
-              log.info("Value in response: {}\n", serializer.fromBinary(response))
+              log.info("Value in response: {}", serializer.fromBinary(response))
               server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
@@ -135,30 +136,30 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
         })
       }
     case state: CurrentClusterState =>
-      log.info("Current members: {}\n", state.members)
+      log.info("Current members: {}", state.members)
 
     case MemberUp(member) if !(nodes.contains(member.address)) => register(member)
     
     // Return the ActorRef of a member node
     case ActorIdentity(member: Member, Some(ref)) =>
       if (member.hasRole("cfabcast")) {
-        log.info("Adding a Protocol agent node on: {}\n", member.address)
+        log.info("Adding a Protocol agent node on: {}", member.address)
         context watch ref
         ref ! GiveMeAgents
       }
       if (member.hasRole("server")) {
-        log.info("Adding a Server Listener on: {}\n", member.address)
+        log.info("Adding a Server Listener on: {}", member.address)
         servers += ref
       }
       if (member.hasRole("client")) {
-        log.info("Adding a Client Listener on: {}\n", member.address)
+        log.info("Adding a Client Listener on: {}", member.address)
         clients += ref
         // DEBUG
         servers += ref
       }
 
     case ActorIdentity(member: Member, None) =>
-      log.info("Unable to find any actor on node: {}\n", member.address)
+      log.info("Unable to find any actor on node: {}", member.address)
     
     // Get the configuration of some member node
     case GiveMeAgents =>
@@ -175,11 +176,11 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       context.become(configuration(actualConfig))
 
     case UnreachableMember(member) =>
-      log.info("Member detected as unreachable: {}\n", member)
+      log.info("Member detected as unreachable: {}", member)
       //TODO notify the leaderOracle and adopt new police
 
     case MemberRemoved(member, previousStatus) =>
-      log.info("Member is Removed: {} after {}\n", member.address, previousStatus)
+      log.info("Member is Removed: {} after {}", member.address, previousStatus)
       nodes -= member.address
       //TODO identify when a client or a server disconnect and remove them.
 
@@ -189,14 +190,14 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
     // TODO: Improve this
     case Terminated(ref) =>
-      log.info("Actor {} terminated, removing config: {}\n", ref, members(ref))
+      log.info("Actor {} terminated, removing config: {}", ref, members(ref))
       val newConfig = config - members(ref)
       notifyAll(newConfig)
       context.become(configuration(newConfig))
       members -= ref
 
     case _ =>
-      log.info("A unknown message received!\n")
+      log.info("A unknown message received!")
   }
 }
 

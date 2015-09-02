@@ -21,19 +21,19 @@ trait Proposer extends ActorLogging {
   this: ProposerActor =>
 
   override def preStart(): Unit = {
-    log.info("Proposer ID: {} UP on {}\n", self.hashCode, self.path)
+    log.info("Proposer ID: {} UP on {}", self.hashCode, self.path)
   }
 
   def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
     if (isCoordinatorOf(msg.rnd) && crnd < msg.rnd) {
-      log.debug(s"PHASE1A - ${self} is COORDINATOR of ROUND: ${msg.rnd} in INSTANCE: ${msg.instance}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1A - ${self} is COORDINATOR of ROUND: ${msg.rnd}")
       val newState = oldState.copy(pval= oldState.pval, cval = None)
       self ! UpdatePRound(prnd, msg.rnd)
       config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
       newState
     } else {
-      log.debug(s"PHASE1A - ${self} IS NOT COORDINATOR of ROUND: ${msg.rnd} and INSTANCE: ${msg.instance}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1A - ${self} IS NOT COORDINATOR of ROUND: ${msg.rnd}")
       oldState
     }
   }
@@ -43,12 +43,12 @@ trait Proposer extends ActorLogging {
     if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None) && msg.value.get.get(self) != Nil) {
       // Phase 2A for CFProposers
       val newState = oldState.copy(pval = msg.value)
-      log.debug("PROPOSAL - {}: update PVAL:{} to: {} in INSTANCE: {}", self, oldState.pval, newState.pval, msg.instance)
+      log.debug("INSTANCE: {} - PROPOSAL - {}: update PVAL:{} to: {}", msg.instance, self, oldState.pval, newState.pval)
       ((msg.rnd.cfproposers diff Set(self)) union config.acceptors).foreach(_ ! Msg2A(msg.instance, msg.rnd, msg.value)) 
       newState
     } else {
       // Try repropose this value
-      log.debug(s"PROPOSAL - ${self} received proposal ${msg}, but not able to propose, because: \n isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PROPOSAL - ${self} received proposal ${msg}, but not able to propose, because:  isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}")
       //FIXME: Find a better way to do this!
       self ! MakeProposal(msg.value.get.get(self).get)     
       oldState
@@ -62,10 +62,10 @@ trait Proposer extends ActorLogging {
       val nil = Some(VMap[Values](self -> Nil))
       (config.learners).foreach(_ ! Msg2A(msg.instance, msg.rnd, nil))
       val newState = oldState.copy(pval = nil)
-      log.debug(s"PHASE2A - ${self} fast-propose NIL in instance ${msg.instance} because receive 2A from: ${actorSender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2A - ${self} fast-propose NIL because receive 2A from: ${actorSender}")
       newState
     } else {
-      log.debug(s"PHASE2A - ${self} receive 2A from: ${actorSender} in INSTANCE: ${msg.instance} but NOT FAST-PROPOSE\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2A - ${self} receive 2A from: ${actorSender} but NOT FAST-PROPOSE")
       oldState
     }
   }
@@ -81,7 +81,7 @@ trait Proposer extends ActorLogging {
       if(S.isEmpty) {
         val newState = oldState.copy(cval = Some(VMap[Values]())) //Bottom vmap
         config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
-        log.debug(s"PHASE2START - ${self} nothing accepted yet in INSTANCE: ${msg.instance} and ROUND: ${msg.rnd}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${self} nothing accepted yet in ROUND: ${msg.rnd}")
         newState
       } else {
         var value = VMap[Values]()
@@ -89,11 +89,11 @@ trait Proposer extends ActorLogging {
         val cval: VMap[Values] = VMap.lub(S) ++: value
         val newState = oldState.copy(cval = Some(cval))
         (config.proposers union config.acceptors).foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(cval)))
-        log.debug(s"PHASE2START - ${self} appended value: ${cval} in INSTANCE: ${msg.instance} and ROUND: ${msg.rnd}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${self} appended value: ${cval} in ROUND: ${msg.rnd}")
         newState
       }
     } else {
-      log.debug(s"PHASE2START - ${self} not meet the quorum requirements in INSTANCE: ${msg.instance} and ROUND: ${msg.rnd}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${self} not meet the quorum requirements in ROUND: ${msg.rnd}")
       oldState
     }
   }  
@@ -105,16 +105,16 @@ trait Proposer extends ActorLogging {
       if(msg.value.get.isEmpty) {
         val newState = oldState.copy(pval = None)
         self ! UpdatePRound(msg.rnd, crnd)
-        log.debug(s"PHASE2PREPARE - ${self} set pval to NONE in INSTANCE: ${msg.instance} and ROUND: ${msg.rnd}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2PREPARE - ${self} set pval to NONE in ROUND: ${msg.rnd}")
         newState
       } else {
         val newState = oldState.copy(pval = msg.value)
         self ! UpdatePRound(msg.rnd, crnd)
-        log.debug(s"PHASE2PREPARE - ${self} set pval to ${msg.value} in INSTANCE: ${msg.instance} and ROUND: ${msg.rnd}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2PREPARE - ${self} set pval to ${msg.value} in ROUND: ${msg.rnd}")
         newState
       }
     } else {
-      log.debug(s"PHASE2PREPARE - ${self} not update pval, because prnd: ${prnd} is greater than message ROUND: ${msg.rnd} in INSTANCE: ${msg.instance}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2PREPARE - ${self} not update pval, because prnd: ${prnd} is greater than message ROUND: ${msg.rnd}")
       oldState
     }
   }
@@ -135,12 +135,12 @@ trait Proposer extends ActorLogging {
       //TODO: async here!
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("{}: INSTANCE: {} -- STATE: {}\n", self, instance, s)
+          case s => log.info("{}: INSTANCE: {} -- STATE: {}", self, instance, s)
         }
       })
     
     case msg: UpdatePRound => 
-      log.info("My prnd: {} crnd: {} -- Updating to prnd {} crnd: {}\n", prnd, crnd, msg.prnd, msg.crnd)
+      log.info(s"${self} - My prnd: ${prnd} crnd: ${crnd} -- Updating to prnd ${msg.prnd} crnd: ${msg.crnd}")
       if(prnd < msg.prnd) {
         prnd = msg.prnd
         grnd = msg.prnd
@@ -154,9 +154,9 @@ trait Proposer extends ActorLogging {
       //TODO: Update the prnd with the new coordinator
       coordinators = newCoordinators
       if(until <= config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.\n", until)
+        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", until)
         if (newCoordinators contains self) {
-          log.debug("Iam a LEADER! My id is: {}\n", self.hashCode)
+          log.debug("Iam a LEADER! My id is: {}", self.hashCode)
           // Run configure phase (1)
           // TODO: ask for all learners and reduce the result  
           implicit val timeout = Timeout(1 seconds)
@@ -171,32 +171,32 @@ trait Proposer extends ActorLogging {
                     val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
                     val rnd = Round(getRoundCount, Set(self), cfp)
                     val msg = Configure(i, rnd)
-                    log.debug(s"${self} Configure INSTANCE: ${i} using ROUND: ${rnd}\n")
+                    log.debug(s"${self} Configure INSTANCE: ${i} using ROUND: ${rnd}")
                    context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
                   })
-                case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
+                case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}", ex.getMessage)
               }
-            case Failure(ex) => log.error(s"Not get CFP set. Because of a {}\n", ex.getMessage)
+            case Failure(ex) => log.error(s"Not get CFP set. Because of a {}", ex.getMessage)
           }
         } else {
-          log.debug("Iam NOT the LEADER! My id is {}\n", self.hashCode)
+          log.debug("Iam NOT the LEADER! My id is {}", self.hashCode)
         }
       } else {
-        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.\n", config.acceptors.size, until)
+        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, until)
       }
 
     case msg: Proposal =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       context.become(proposerBehavior(config, instances + (msg.instance -> propose(msg, state, config))))
 
     case msg: Msg2A =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(sender, msg, state, config))))
 
     case msg: Msg1B =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       //FIXME: Change this to be like learners quorum!
       // WRONG!!! Override msgs for the same sender!
@@ -207,7 +207,7 @@ trait Proposer extends ActorLogging {
 
     // Phase2Prepare
     case msg: Msg2S =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
 
@@ -217,7 +217,7 @@ trait Proposer extends ActorLogging {
     //TODO MemberRemoved
 
     case msg: MakeProposal =>
-      log.debug(s"${self} receive ${msg} from ${sender} with PROPOSED COUNTER=${proposed}\n")
+      log.debug(s"${self} receive ${msg} from ${sender} with PROPOSED COUNTER=${proposed}")
       // update the grnd
       if(prnd.coordinator.nonEmpty) {
         var round = prnd
@@ -234,25 +234,25 @@ trait Proposer extends ActorLogging {
           decided onComplete {
             case Success(d) =>
               // If not proposed and not learned nothing yet in this instance
-              log.debug(s"${self} -> DECIDED= ${d} , PROPOSED= ${p}, trying value: ${msg.value}\n")
+              log.debug(s"${self} -> DECIDED= ${d} , PROPOSED= ${p}, trying value: ${msg.value}")
               if (!d.contains(p)) {
                 self ! TryPropose(p, round, msg.value)
               } else {
                 // Not repropose Nil on the last valid instance, use it to a new value
                 val nilReproposalInstances = d.complement().dropLast
                 nilReproposalInstances.iterateOverAll(i => {
-                  log.debug(s"MAKEPROPOSAL: ${self} sending NIL to LEARNERS in instance: ${i}\n")
+                  log.debug(s"INSTANCE: ${i} - MAKEPROPOSAL: ${self} sending NIL to LEARNERS")
                   self ! TryPropose(i, round, Nil)
                   //exec phase2A
                 })
                 val instance = d.next
                 self ! TryPropose(instance, round, msg.value)
               }
-            case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}\n", ex.getMessage)
+            case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}", ex.getMessage)
           }
         } else {
           val cfps = round.cfproposers
-          log.debug("{} - Receive a proposal: {}, forward to a cfproposers {}\n", self, msg, cfps)
+          log.debug("{} - Receive a proposal: {}, BUT I NOT CFP, forward to a cfproposers {}", self, msg, cfps)
           cfps.toVector(Random.nextInt(cfps.size)) forward msg
         }
       } else {
@@ -262,10 +262,10 @@ trait Proposer extends ActorLogging {
 
     case msg @ TryPropose(instance, round, value) =>
       if (instance > proposed) {
-        log.debug(s"UPDATE proposed: ${proposed} to ${instance}\n")
+        log.debug(s"UPDATE proposed: ${proposed} to ${instance}")
         proposed = instance
       }
-      log.debug(s"${self} receive ${msg} PROPOSING VALUE ${value} IN INSTANCE ${instance}\n")
+      log.debug(s"INSTANCE: ${instance} - ${self} receive ${msg} PROPOSING VALUE ${value}")
       self ! Proposal(instance, round, Some(VMap(self -> value)))
       // TODO: Repropose values not decided by the same cfproposer, save proposed values
       // How to know if value was not decided!?
@@ -274,12 +274,12 @@ trait Proposer extends ActorLogging {
 
 /*    case msg: Learned =>
       //proposeRetry(self, instance, round, Some(VMap(self -> msg.value))).asInstanceOf[Future[Values]]
-      log.info("{} PROPOSED {} and LEARNED {}\n",self, msg.value, l)
+      log.info("{} PROPOSED {} and LEARNED {}",self, msg.value, l)
       if (msg.learned != msg.value) {
-        log.info(s"${self} Not learn the proposed value ${msg.value}, trying repropose...\n")
+        log.info(s"${self} Not learn the proposed value ${msg.value}, trying repropose...")
         self ! MakeProposal(msg.value)
       } else {
-        log.info(s"${self} Successful proposed and learned: ${l} \n")
+        log.info(s"${self} Successful proposed and learned: ${l} ")
       }*/
 
 //    case ProposedIn(instance, value) =

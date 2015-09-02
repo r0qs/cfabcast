@@ -16,7 +16,7 @@ trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
 
   override def preStart(): Unit = {
-    log.info("Acceptor ID: {} UP on {}\n", self.hashCode, self.path)
+    log.info("Acceptor ID: {} UP on {}", self.hashCode, self.path)
   }
 
   def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
@@ -24,18 +24,18 @@ trait Acceptor extends ActorLogging {
     // Cond 1
     if (rnd <= msg.rnd) {
       if ((!msg.value.get.isEmpty && oldState.vrnd < msg.rnd) || oldState.vval == None) {
-        log.debug(s"PHASE2B1 - ${self} Cond1 satisfied with msg VALUE: ${msg.value} in INSTANCE: ${msg.instance}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} Cond1 satisfied with msg VALUE: ${msg.value}")
         self ! UpdateARound(msg.rnd)
         val newState = oldState.copy(vrnd = msg.rnd, vval = msg.value)
         config.learners foreach (_ ! Msg2B(msg.instance, rnd, newState.vval))
         newState
       } else {
-        log.debug(s"PHASE2B1 - ${self} Cond1 NOT satisfied with msg VALUE: ${msg.value} and ROUND: ${msg.rnd} in INSTANCE: ${msg.instance} and STATE: ${oldState}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} Cond1 NOT satisfied with msg VALUE: ${msg.value} and ROUND: ${msg.rnd} with STATE: ${oldState}")
         oldState
       }
     } else {
       //TODO: update my round to greatest seen
-      log.debug(s"PHASE2B1 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} in INSTANCE: ${msg.instance} with STATE: ${oldState}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} with STATE: ${oldState}")
       oldState
     }
   }
@@ -43,25 +43,25 @@ trait Acceptor extends ActorLogging {
   def phase2B2(actorSender: ActorRef, msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (rnd <= msg.rnd && msg.value.get.get(actorSender) != Nil) {
-      log.debug(s"PHASE2B2 - ${self} Cond2 satisfied with msg VALUE: ${msg.value} in INSTANCE ${msg.instance}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} Cond2 satisfied with msg VALUE: ${msg.value}")
       // FIXME: Is thread-safe do this!?
       var value = VMap[Values]()
       if (oldState.vrnd < msg.rnd || oldState.vval == None) {
         // extends value and put Nil for all proposers
         value = msg.value.get
         for (p <- (config.proposers diff msg.rnd.cfproposers)) value += (p -> Nil)
-        log.debug(s"PHASE2B2 - ${self} Extending vval with nil ${value} in round ${msg.rnd} and INSTANCE: ${msg.instance}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} Extending vval with NIL ${value} in round ${msg.rnd}")
       } else {
         value = oldState.vval.get ++ msg.value.get
-        log.debug(s"PHASE2B2 - ${self} Extending vval with msg.value ${value} in round ${msg.rnd} and INSTANCE: ${msg.instance}\n")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} Extending vval with VALUE ${value} in round ${msg.rnd}")
       }
       val newState = oldState.copy(vrnd = msg.rnd, vval = Some(value))
       self ! UpdateARound(msg.rnd)
-      log.debug(s"PHASE2B2 - ${self} accept VALUE: ${newState.vval} in INSTANCE: ${msg.instance}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} accept VALUE: ${newState.vval}")
       config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, newState.vval))
       newState
     } else {
-      log.debug(s"PHASE2B2 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or VALUE: ${msg.value.get.get(actorSender)} is NIL in INSTANCE: ${msg.instance} with STATE: ${oldState}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or VALUE: ${msg.value.get.get(actorSender)} is NIL with STATE: ${oldState}")
       oldState
     }
   }
@@ -69,11 +69,12 @@ trait Acceptor extends ActorLogging {
   def phase1B(actorSender: ActorRef, msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
-      log.debug(s"PHASE1B - ${self} sending STATE: ${oldState} to COORDINATOR: ${actorSender} in INSTANCE: ${msg.instance}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${self} sending STATE: ${oldState} to COORDINATOR: ${actorSender}")
       self ! UpdateARound(msg.rnd)
       actorSender ! Msg1B(msg.instance, msg.rnd, oldState.vrnd, oldState.vval)
+    } else {
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} and sender ${actorSender} is not a COORDINATOR with STATE: ${oldState}")
     }
-    log.debug(s"PHASE1B - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} and sender ${actorSender} is not a COORDINATOR in INSTANCE: ${msg.instance} with STATE: ${oldState}\n")
     oldState
   }
 
@@ -81,7 +82,7 @@ trait Acceptor extends ActorLogging {
     case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("{}: INSTANCE: {} -- STATE: {}\n", self, instance, s)
+          case s => log.info("{}: INSTANCE: {} -- STATE: {}", self, instance, s)
         }
       })
 
@@ -89,12 +90,12 @@ trait Acceptor extends ActorLogging {
 
     // Phase1B
     case msg: Msg1A =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(sender, msg, state, config))))
 
 /*    case msg: Msg1Am =>
-      log.info("Received MSG1A from {}\n", sender.hashCode)
+      log.info("Received MSG1A from {}", sender.hashCode)
       msg.instance.foreach(i => { 
         val state = instances(i)
         context.become(acceptorBehavior(config, instances + (i ->  phase1B(msg, state, config))))
@@ -102,12 +103,12 @@ trait Acceptor extends ActorLogging {
 
     // Phase2B
     case msg: Msg2S =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B1(msg, state, config))))
     
     case msg: Msg2A =>
-      log.debug(s"${self} receive ${msg} from ${sender}\n")
+      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(sender, msg, state, config))))
     

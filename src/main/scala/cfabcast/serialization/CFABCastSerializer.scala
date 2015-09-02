@@ -20,8 +20,7 @@ class CFABCastSerializer(val system: ExtendedActorSystem) extends Serializer {
     javaSerializer.toBinary(obj)
   }
 
-  def fromBinary(bytes: Array[Byte],
-                 clazz: Option[Class[_]]): AnyRef = {
+  def fromBinary(bytes: Array[Byte], clazz: Option[Class[_]]): AnyRef = {
     javaSerializer.fromBinary(bytes, clazz)
   }
 
