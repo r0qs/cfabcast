@@ -69,7 +69,10 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
 
   val console = context.actorOf(Props[ConsoleClient], "console")
 
+  //TODO: Set the Oracle class based on configuration
   val leaderOracle = context.actorOf(Props[LeaderOracle], "leaderOracle")
+
+  val cfproposerOracle = context.actorOf(Props[CFProposerOracle], "cfproposerOracle")
 
   val myConfig = ClusterConfiguration(proposers, acceptors, learners)
 
@@ -108,6 +111,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       }
     case Broadcast(data) =>
       //TODO: Use stash to store messages for further processing
+      // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
       if(waitFor <= config.acceptors.size) {
         log.info("Receive proposal: {} from {} and sending to {}", serializer.fromBinary(data),sender, proposers)
         // TODO: Clients must be associated with a proposer
@@ -185,8 +189,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       //TODO identify when a client or a server disconnect and remove them.
 
     //FIXME: All proposers are collision fast
-    case GetCFPs => sender ! config.proposers
-    //sender ! Set(config.proposers.toVector(Random.nextInt(config.proposers.size)))
+    case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers)
 
     // TODO: Improve this
     case Terminated(ref) =>

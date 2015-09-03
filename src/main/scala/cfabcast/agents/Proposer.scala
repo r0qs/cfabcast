@@ -243,6 +243,7 @@ trait Proposer extends ActorLogging {
                 nilReproposalInstances.iterateOverAll(i => {
                   log.debug(s"INSTANCE: ${i} - MAKEPROPOSAL: ${self} sending NIL to LEARNERS")
                   self ! TryPropose(i, round, Nil)
+                  //FIXME: Maybe send this direct to learners:w
                   //exec phase2A
                 })
                 val instance = d.next

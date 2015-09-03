@@ -34,7 +34,6 @@ class CFABCastSettings(config: Config) extends Extension {
       case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getInt("nr-of-agents"))
     }.toMap
   }
-
 }
 
 

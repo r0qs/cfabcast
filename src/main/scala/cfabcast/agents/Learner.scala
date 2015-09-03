@@ -39,7 +39,7 @@ trait Learner extends ActorLogging {
       val lubVals: VMap[Values] = VMap.lub(Slub)
       val newState = oldState.copy(learned = Some(lubVals))
       log.debug(s"INSTANCE: ${instance} - LEARNER: ${self} - LEARNED: ${newState.learned}")
-      self ! InstanceLearned(instance, Some(lubVals))
+      self ! InstanceLearned(instance, newState.learned)
       newState
     } else { 
       log.debug(s"INSTANCE: ${instance} - MSG2B - ${self} Quorum requirements not satisfied: ${quorum.size}")

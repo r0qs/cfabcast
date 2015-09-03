@@ -48,6 +48,7 @@ case object GetState extends Message
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 case class UpdateARound(rnd: Round) extends Message
 
+case class ProposerSet(replyTo: ActorRef, proposers: Set[ActorRef]) extends Message
 /*
  * Cluster Messages
  */
