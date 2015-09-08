@@ -7,7 +7,8 @@ case class ElementAlreadyExistsException(e: String) extends Exception(e)
 /*
  * Interval of instances
  */
-class IRange(self: List[Interval]) extends Iterable[Interval] {
+class IRange(self: List[Interval]) extends Iterable[Interval] 
+  with Serializable {
   override def toString = self.toString
   
   override def iterator = self.iterator
@@ -102,7 +103,8 @@ object IRange {
   }
 }
 
-class Interval(val from: Int, val to: Int) extends Ordered[Interval] {
+class Interval(val from: Int, val to: Int) extends Ordered[Interval] 
+  with Serializable {
  // The lowest interval in this context is one that has the lowest element
   def compare(that: Interval) = this.from - that.from
 

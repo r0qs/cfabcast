@@ -33,22 +33,30 @@ case object Learn extends Message
 // Message sent to start the protocol (Phase1)
 case class Configure(instance: Int, rnd: Round) extends Message
 
-// Message sent to start a new round
+/*
+ * Auxiliary messages
+ */
+// Message sent to propose a new value
 case class MakeProposal(value: Values) extends Message
 case class TryPropose(instance: Int, round: Round, value: Values) extends Message
 
 case object GetCFPs extends Message
 
-case class Learned(learned: Option[VMap[Values]]) extends Message
-case class InstanceLearned(instance: Int, learned: Option[VMap[Values]]) extends Message
+case class Learned(instance: Int, learnedValue: Values) extends Message
+case class DeliveredValue(value: Option[Values]) extends Message
+case class InstanceLearned(instance: Int, learnedVMaps: Option[VMap[Values]]) extends Message
 
 case object WhatULearn extends Message
 case object GetState extends Message
 
+case object GetIntervals extends Message
+case class TakeIntervals(interval: IRange) extends Message
+
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 case class UpdateARound(rnd: Round) extends Message
 
-case class ProposerSet(replyTo: ActorRef, proposers: Set[ActorRef]) extends Message
+case class ProposedIn(instance: Int, value: Values) extends Message
+
 /*
  * Cluster Messages
  */
@@ -61,6 +69,11 @@ case object GiveMeAgents extends Message
  */
 case class MemberChange(config: ClusterConfiguration, nodeProposers: Set[ActorRef], waitFor: Int) extends Message
 case class NewLeader(coordinators: Set[ActorRef], until: Int) extends Message
+
+/*
+ * Collision-fast Oracle Messages
+ */
+case class ProposerSet(replyTo: ActorRef, proposers: Set[ActorRef]) extends Message
 
 /*
  * Console Messages

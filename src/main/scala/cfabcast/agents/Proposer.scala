@@ -135,10 +135,23 @@ trait Proposer extends ActorLogging {
       //TODO: async here!
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("{}: INSTANCE: {} -- STATE: {}", self, instance, s)
+          case s => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, self, s)
         }
       })
-    
+ 
+    case msg: Learned =>
+      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+      val actorSender = sender
+      state onSuccess {
+          case s => { 
+                    if (s.pval.get.get(self).get != msg.learnedValue) {
+                      //TODO proposed value not differ from learned in this instance
+                      log.error(s"INSTANCE: ${msg.instance} - ${self} - Proposed value: ${s.pval} was NOT LEARNED: ${msg.learnedValue} send by ${actorSender}")
+                    }
+          }
+      }
+        
+
     case msg: UpdatePRound => 
       log.info(s"${self} - My prnd: ${prnd} crnd: ${crnd} -- Updating to prnd ${msg.prnd} crnd: ${msg.crnd}")
       if(prnd < msg.prnd) {
@@ -299,10 +312,6 @@ class ProposerActor extends Actor with Proposer {
  
   // FIXME: This need to be Long?
   var proposed: Int = -1;
-
-  var proposedValueIn: Map[Int, Option[Values]] = Map()
-
-  var proposedIn: IRange = IRange()
 
   val quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, Message]]()
 

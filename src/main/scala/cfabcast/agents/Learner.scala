@@ -74,24 +74,35 @@ trait Learner extends ActorLogging {
 
     case WhatULearn =>
       sender ! instancesLearned
-    
+   
+    case GetIntervals =>
+      sender ! TakeIntervals(instancesLearned)
+
     case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("{}: INSTANCE: {} -- STATE: {}", self, instance, s)
+          case s => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, self, s)
         }
       })
 
     //FIXME: notify all values learned, one time only
-    case InstanceLearned(instance, learned) =>
+    case InstanceLearned(instance, learnedVMaps) =>
       try {
+        replies.getOrElseUpdate(instance, scala.collection.mutable.Set())
+        val vmap = learnedVMaps.get
+        for ((p, v) <- vmap) {
+          if (!replies(instance).contains(p)) {
+            replies(instance) += p
+            // Notify what was learned
+            p ! Learned(instance, v)
+            context.parent ! DeliveredValue(Some(v))
+          }
+        }
         instancesLearned = instancesLearned.insert(instance)
-        // Notify what was learned
-        context.parent ! Learned(learned)
         log.info("{} LEARNED: {}",self, instancesLearned)
       } catch {
         case e: ElementAlreadyExistsException => 
-          log.warning("Instance Already learned, not send response")
+          log.debug(s"Instance ${instance} already learned by ${self}, discarding response with values ${learnedVMaps}")
       }
 
     case msg: UpdateConfig =>
@@ -104,6 +115,7 @@ class LearnerActor extends Actor with Learner {
   var instancesLearned: IRange = IRange()
   val quorumPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Map[ActorRef, VMap[Values]]]()
   val pPerInstance = scala.collection.mutable.Map[Int, scala.collection.mutable.Set[ActorRef]]()
+  val replies = scala.collection.mutable.Map[Int, scala.collection.mutable.Set[ActorRef]]()
 
   def receive = learnerBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
 }

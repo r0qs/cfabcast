@@ -1,6 +1,5 @@
 package cfabcast
 
-import scala.collection.immutable.Set
 import akka.cluster.{ Member, Cluster }
 import akka.actor.{ Actor, ActorRef, ActorSystem }
 import akka.actor.{ Address, ActorPath, ActorIdentity, Identify, RootActorPath }
@@ -8,10 +7,13 @@ import akka.actor.Props
 import akka.actor.ActorLogging
 import akka.actor.Terminated
 import akka.cluster.ClusterEvent._
-import com.typesafe.config.ConfigFactory
 import akka.actor.ExtendedActorSystem
+
+import com.typesafe.config.ConfigFactory
+
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
+import scala.collection.immutable.Set
 
 import cfabcast.messages._
 import cfabcast.agents._
@@ -102,13 +104,17 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       cmd match {
         case "pstate" => proposers.foreach(_ ! GetState) 
         case "astate" => acceptors.foreach(_ ! GetState) 
-        case "lstate" => learners.foreach(_ ! GetState) 
+        case "lstate" => learners.foreach(_ ! GetState)
+        case "interval" => learners.foreach(_ ! GetIntervals)
         case "all" => 
           config.proposers.zipWithIndex.foreach { case (ref, i) =>
             ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
         case _ => self ! Broadcast(serializer.toBinary(cmd))
       }
+
+    case TakeIntervals(interval) => log.info(s"Learner ${sender} learned in instances: ${interval}") 
+
     case Broadcast(data) =>
       //TODO: Use stash to store messages for further processing
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
@@ -121,22 +127,21 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       else
         log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
 
-    case Learned(learnedValues) =>
-      val vmap = learnedValues.get
-      if(vmap == None)
-        log.info("Nothing learned yet! VMAP is BOTTOM! = {} ", vmap)
+    case DeliveredValue(value) =>
+      val v = value.get
+      if(v == None)
+        log.info("Nothing learned yet! Value is BOTTOM! = {} ", v)
       else {
-        log.info("Received Learned from {} with VMAP = {} ", sender, vmap)
+        log.info("Received learned from {} with Value = {} ", sender, v)
         servers.foreach( server => { 
           log.info("Sending response to server: {} ", server)
-          vmap.foreach({ case (_, v) => v match {
+          v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
               log.info("Value in response: {}", serializer.fromBinary(response))
               server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
-          }) 
         })
       }
     case state: CurrentClusterState =>

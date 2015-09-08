@@ -82,7 +82,7 @@ trait Acceptor extends ActorLogging {
     case GetState =>
       instances.foreach({case (instance, state) => 
         state onSuccess {
-          case s => log.info("{}: INSTANCE: {} -- STATE: {}", self, instance, s)
+          case s => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, self, s)
         }
       })
 
