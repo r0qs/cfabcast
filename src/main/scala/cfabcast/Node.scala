@@ -43,13 +43,13 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   for ((t, a) <- nodeAgents) {
     t match {
       case "proposer" => for (b <- 1 to a) { 
-        proposers += context.actorOf((Props[ProposerActor]), name=s"proposer-$b-${self.hashCode}") 
+        proposers += context.actorOf(Props[ProposerActor], name=s"proposer-$b-${self.hashCode}") 
       }
       case "acceptor" => for (b <- 1 to a) {
-        acceptors += context.actorOf((Props[AcceptorActor]), name=s"acceptor-$b-${self.hashCode}") 
+        acceptors += context.actorOf(Props[AcceptorActor], name=s"acceptor-$b-${self.hashCode}") 
       }
       case "learner"  => for (b <- 1 to a) {
-        learners  += context.actorOf((Props[LearnerActor]), name=s"learner-$b-${self.hashCode}")
+        learners  += context.actorOf(Props[LearnerActor], name=s"learner-$b-${self.hashCode}")
       }
     }
   }
@@ -119,26 +119,26 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       //TODO: Use stash to store messages for further processing
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
       if(waitFor <= config.acceptors.size) {
-        log.info("Receive proposal: {} from {} and sending to {}", serializer.fromBinary(data),sender, proposers)
+        log.debug("Receive proposal: {} from {} and sending to {}", serializer.fromBinary(data),sender, proposers)
         // TODO: Clients must be associated with a proposer
         // and servers with a learner (cluster client)
         proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
       }
       else
-        log.info("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
+        log.debug("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
 
     case DeliveredValue(value) =>
       val v = value.get
       if(v == None)
-        log.info("Nothing learned yet! Value is BOTTOM! = {} ", v)
+        log.debug("Nothing learned yet! Value is BOTTOM! = {} ", v)
       else {
-        log.info("Received learned from {} with Value = {} ", sender, v)
+        log.debug("Received learned from {} with Value = {} ", sender, v)
         servers.foreach( server => { 
-          log.info("Sending response to server: {} ", server)
+          log.debug("Sending response to server: {} ", server)
           v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
-              log.info("Value in response: {}", serializer.fromBinary(response))
+//              log.debug("Value in response: {}", serializer.fromBinary(response))
               server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
@@ -168,7 +168,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       }
 
     case ActorIdentity(member: Member, None) =>
-      log.info("Unable to find any actor on node: {}", member.address)
+      log.warning("Unable to find any actor on node: {}", member.address)
     
     // Get the configuration of some member node
     case GiveMeAgents =>
@@ -185,11 +185,11 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       context.become(configuration(actualConfig))
 
     case UnreachableMember(member) =>
-      log.info("Member detected as unreachable: {}", member)
+      log.info("Member {} detected as unreachable: {}", self, member)
       //TODO notify the leaderOracle and adopt new police
 
     case MemberRemoved(member, previousStatus) =>
-      log.info("Member is Removed: {} after {}", member.address, previousStatus)
+      log.info("Member {} removed: {} after {}", self, member.address, previousStatus)
       nodes -= member.address
       //TODO identify when a client or a server disconnect and remove them.
 
@@ -205,7 +205,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       members -= ref
 
     case _ =>
-      log.info("A unknown message received!")
+      log.error("A unknown message received!")
   }
 }
 

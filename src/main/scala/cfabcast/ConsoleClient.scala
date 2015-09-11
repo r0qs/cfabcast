@@ -15,7 +15,7 @@ class ConsoleClient extends Actor {
     case StartConsole => handleInput
   }
 
-  def handleInput = {
+  def handleInput() = {
     implicit val codec = Codec.UTF8
     codec.onMalformedInput(CodingErrorAction.IGNORE)
     codec.onUnmappableCharacter(CodingErrorAction.IGNORE)

@@ -6,6 +6,24 @@ version := "0.1-SNAPSHOT"
 
 scalaVersion := "2.11.6"
 
+scalacOptions ++= Seq(
+  "-deprecation",
+  "-unchecked",
+  "-encoding", "UTF-8",
+  "-Xlint",
+  "-Yclosure-elim",
+  "-Yinline",
+  "-Xverify",
+  "-feature",
+  "-language:postfixOps"
+)
+
+//production
+javaOptions in run += "-Xms512m -Xmx3g -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=256M -XX:+UseG1GC -XX:MaxGCPauseMillis=3000"
+
+//debug
+//javaOptions in run += "-Xms512M -Xmx1536M -Xss1M -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=256M -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:-HeapDumpOnOutOfMemoryError -XX:+UseG1GC -XX:MaxGCPauseMillis=3000"
+
 resolvers ++= Seq(
   "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
 )
