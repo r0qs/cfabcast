@@ -6,7 +6,6 @@ import java.nio.charset.CodingErrorAction
 
 import scala.io.Codec
 
-import cfabcast._
 import cfabcast.messages._
 
 class ConsoleClient extends Actor {

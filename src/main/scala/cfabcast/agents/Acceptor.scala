@@ -11,12 +11,14 @@ import scala.util.Random
 import scala.async.Async.{async, await}
 
 import akka.actor._
+import akka.persistence._
 
 trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
 
   override def preStart(): Unit = {
     log.info("Acceptor ID: {} UP on {}", self.hashCode, self.path)
+    // Request a snapshot
   }
 
   def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
@@ -28,6 +30,7 @@ trait Acceptor extends ActorLogging {
         self ! UpdateARound(msg.rnd)
         val newState = oldState.copy(vrnd = msg.rnd, vval = msg.value)
         config.learners foreach (_ ! Msg2B(msg.instance, rnd, newState.vval))
+        persistentAcceptor ! Persist(Map(msg.instance -> newState))
         newState
       } else {
         log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} Cond1 NOT satisfied with msg VALUE: ${msg.value} and ROUND: ${msg.rnd} with STATE: ${oldState}")
@@ -59,6 +62,7 @@ trait Acceptor extends ActorLogging {
       self ! UpdateARound(msg.rnd)
       log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} accept VALUE: ${newState.vval}")
       config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, newState.vval))
+      persistentAcceptor ! Persist(Map(msg.instance -> newState))
       newState
     } else {
       log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or VALUE: ${msg.value.get.get(actorSender)} is NIL with STATE: ${oldState}")
@@ -116,12 +120,52 @@ trait Acceptor extends ActorLogging {
     case msg: UpdateConfig =>
       context.become(acceptorBehavior(msg.config, instances))
     //TODO MemberRemoved
+
+    case "snap" => persistentAcceptor ! "snap"
+
+    case "print" => persistentAcceptor ! "print"
+
+    case ApplySnapShot(snapshot) =>
+      log.info(s"Applying snapshot from ${sender} with ${snapshot}")
+      var m = Map[Int, Future[AcceptorMeta]]()
+      snapshot.events.foreach( { case (instance, state) =>
+        m += (instance -> Future.successful(state))
+      })
+      context.become(acceptorBehavior(config, m))
+      //call configure to run phase 1A again
   }
       
 }
 
-//TODO: Make this persistent: http://doc.akka.io/docs/akka/2.3.11/scala/persistence.html
+class PersistentAcceptor extends PersistentActor {
+  override def persistenceId = "sample-id-0"
+
+  var state = AcceptorState()
+
+  def updateState(event: Evt): Unit = {
+    state = state.updated(event)
+    self ! "snap"
+  }
+
+  val receiveRecover: Receive = {
+    case evt: Evt                                  => updateState(evt)
+    case SnapshotOffer(_, snapshot: AcceptorState) =>
+      state = snapshot
+      context.parent ! ApplySnapShot(snapshot)
+  }
+
+  val receiveCommand: Receive = {
+    case Persist(data) => persist(Evt(data))(updateState)
+    case "snap"  => saveSnapshot(state)
+    case "print" => println(state)
+  }
+
+}
+
 class AcceptorActor extends Actor with Acceptor {
   var rnd: Round = Round()
+  
+  val persistentAcceptor = context.actorOf(Props[PersistentAcceptor], "persistentAcceptor-0")
+
   def receive = acceptorBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
 }

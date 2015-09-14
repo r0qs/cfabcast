@@ -5,9 +5,9 @@
     <!-- Simple file output -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern> 
-           <!-- <pattern>%X{akkaTimestamp} %-5level %logger{36} %X{sourceThread} %X{akkaSource} - %msg%n</pattern>
-            <pattern>%msg%n</pattern> -->
+            <!--<pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern> 
+            <pattern>%X{akkaTimestamp} %-5level %logger{36} %X{sourceThread} %X{akkaSource} - %msg%n</pattern> -->
+            <pattern>%msg%n</pattern>
         </encoder>
 
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
@@ -40,17 +40,17 @@
     </appender>
 
     <!-- Enable FILE and STDOUT appenders for all log messages. -->
-    <root level="DEBUG">
+    <!--<root level="DEBUG">
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDOUT"/>
-    </root> 
+    </root> -->
 
-  <!--
+  
     <logger name="cfabcast" level="ALL">
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDOUT"/> 
-    </logger> --> 
+    </logger> 
 
-    <logger name="user" level="ALL"/>
+<!--    <logger name="user" level="ALL"/> -->
 
 </configuration>

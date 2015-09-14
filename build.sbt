@@ -10,22 +10,36 @@ scalacOptions ++= Seq(
   "-deprecation",
   "-unchecked",
   "-encoding", "UTF-8",
-  "-Xlint",
-  "-Yclosure-elim",
-  "-Yinline",
-  "-Xverify",
   "-feature",
-  "-language:postfixOps"
+  "-Xlint",
+  "-Xverify",
+  "-Xfuture",
+  "-Yinline",
+  "-Yclosure-elim",
+  "-Ywarn-dead-code",
+  "-Ywarn-numeric-widen",
+  "-Ywarn-value-discard",
+  "-Ywarn-unused-import",
+  "-language:postfixOps",
+  "-target:jvm-1.8"
 )
 
 //production
-javaOptions in run += "-Xms512m -Xmx3g -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=256M -XX:+UseG1GC -XX:MaxGCPauseMillis=3000"
+javaOptions in run ++= Seq("-Xms512m", "-Xmx2g", "-XX:+CMSClassUnloadingEnabled", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=3000")
 
 //debug
 //javaOptions in run += "-Xms512M -Xmx1536M -Xss1M -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=256M -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:-HeapDumpOnOutOfMemoryError -XX:+UseG1GC -XX:MaxGCPauseMillis=3000"
 
+javacOptions ++= Seq(
+  "-source", "1.8",
+  "-target", "1.8",
+  "-Xlint"
+)
+
 resolvers ++= Seq(
-  "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
+  "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
+  "Sonatype OSS Releases" at "https://oss.sonatype.org/content/repositories/releases/",
+  "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots/"
 )
 
 libraryDependencies ++= Seq(

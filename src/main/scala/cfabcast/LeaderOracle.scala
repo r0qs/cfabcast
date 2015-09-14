@@ -3,7 +3,6 @@ package cfabcast
 import akka.actor.{Actor, ActorRef, ActorLogging}
 
 import cfabcast.messages._
-import cfabcast.agents._
 
 class LeaderOracle extends Actor with ActorLogging {
   

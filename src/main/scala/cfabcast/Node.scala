@@ -8,7 +8,6 @@ import akka.actor.ActorLogging
 import akka.actor.Terminated
 import akka.cluster.ClusterEvent._
 import akka.actor.ExtendedActorSystem
-
 import com.typesafe.config.ConfigFactory
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -102,11 +101,13 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case Command(cmd: String) =>
       log.info("Received COMMAND {} ", cmd)
       cmd match {
-        case "pstate" => proposers.foreach(_ ! GetState) 
-        case "astate" => acceptors.foreach(_ ! GetState) 
-        case "lstate" => learners.foreach(_ ! GetState)
+        case "pstate"   => proposers.foreach(_ ! GetState) 
+        case "astate"   => acceptors.foreach(_ ! GetState) 
+        case "lstate"   => learners.foreach(_ ! GetState)
         case "interval" => learners.foreach(_ ! GetIntervals)
-        case "all" => 
+        case "snap"     => acceptors.foreach(_ ! "snap")
+        case "print"    => acceptors.foreach(_ ! "print")
+        case "all"      => 
           config.proposers.zipWithIndex.foreach { case (ref, i) =>
             ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
@@ -180,7 +181,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       notifyAll(actualConfig)
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
-      if (waitFor == actualConfig.acceptors.size)
+      if (waitFor == actualConfig.acceptors.size) 
         leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
 

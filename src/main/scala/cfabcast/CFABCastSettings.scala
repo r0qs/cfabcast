@@ -10,8 +10,6 @@ import akka.util.Helpers.Requiring
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigObject
 
-import cfabcast._
-     
 class CFABCastSettings(config: Config) extends Extension {
   private val cc = config.getConfig("cfabcast")
 

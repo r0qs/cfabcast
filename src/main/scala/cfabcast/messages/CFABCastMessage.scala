@@ -2,8 +2,6 @@ package cfabcast.messages
 
 import scala.beans.BeanProperty
 
-import cfabcast._
-
 /*
  * Client Messages
  */

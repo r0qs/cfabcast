@@ -1,7 +1,6 @@
 package cfabcast
 
 import akka.actor.ActorRef
-import cfabcast._
 
 sealed trait ClusterConfiguration {
   val quorumSize: Int

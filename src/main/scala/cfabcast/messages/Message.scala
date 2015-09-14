@@ -1,9 +1,9 @@
 package cfabcast.messages
 
 import akka.actor.ActorRef
-import akka.cluster.Member
 
 import cfabcast._
+import cfabcast.protocol._
 /**
  * Define protocol messages for collision-fast paxos.
  */
@@ -32,6 +32,9 @@ case object Learn extends Message
 
 // Message sent to start the protocol (Phase1)
 case class Configure(instance: Int, rnd: Round) extends Message
+
+case class Persist(data: Map[Int, AcceptorMeta]) extends Message
+case class ApplySnapShot(snapshot: AcceptorState) extends Message
 
 /*
  * Auxiliary messages
