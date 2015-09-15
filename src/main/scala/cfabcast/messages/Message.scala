@@ -14,6 +14,7 @@ case class Proposal(instance: Int, rnd: Round, value: Option[VMap[Values]]) exte
 
 // Message sent by coordinator c to all acceptors.
 case class Msg1A(instance: Int, rnd: Round) extends Message
+case class Msg1Am(rnd: Round) extends Message
 
 // Message sent by acceptor a to the coordinator of round rnd.
 case class Msg1B(instance: Int, rnd: Round, vrnd: Round, vval: Option[VMap[Values]]) extends Message
@@ -54,6 +55,7 @@ case object GetState extends Message
 
 case object GetIntervals extends Message
 case class TakeIntervals(interval: IRange) extends Message
+case class AcceptedInstances(instances: IRange, rnd: Round) extends Message
 
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 case class UpdateARound(rnd: Round) extends Message

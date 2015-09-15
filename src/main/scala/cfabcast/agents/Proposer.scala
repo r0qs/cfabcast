@@ -30,7 +30,7 @@ trait Proposer extends ActorLogging {
       log.debug(s"INSTANCE: ${msg.instance} - PHASE1A - ${self} is COORDINATOR of ROUND: ${msg.rnd}")
       val newState = oldState.copy(pval= oldState.pval, cval = None)
       self ! UpdatePRound(prnd, msg.rnd)
-      config.acceptors.foreach(_ ! Msg1A(msg.instance, msg.rnd))
+      config.acceptors.foreach(_ ! Msg1Am(msg.rnd))
       newState
     } else {
       log.debug(s"INSTANCE: ${msg.instance} - PHASE1A - ${self} IS NOT COORDINATOR of ROUND: ${msg.rnd}")
@@ -78,6 +78,7 @@ trait Proposer extends ActorLogging {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
       val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
       val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
+      log.info(s"PHASE2START - INSTANCE: ${msg.instance} - S= ${S}")
       if(S.isEmpty) {
         val newState = oldState.copy(cval = Some(VMap[Values]())) //Bottom vmap
         config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
@@ -185,7 +186,7 @@ trait Proposer extends ActorLogging {
                     val rnd = Round(getRoundCount, Set(self), cfp)
                     val msg = Configure(i, rnd)
                     log.debug(s"${self} Configure INSTANCE: ${i} using ROUND: ${rnd}")
-                   context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
+                    context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
                   })
                 case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}", ex.getMessage)
               }
@@ -197,6 +198,18 @@ trait Proposer extends ActorLogging {
       } else {
         log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, until)
       }
+
+    case msg: AcceptedInstances =>
+      log.info(s"ROUND: ${msg.rnd} - ${self} with CRND: ${crnd} receive ACCEPTED INTERVAL: ${msg.instances} from ${sender}")
+      if (isCoordinatorOf(msg.rnd)) {
+        //val rnd: Round = msg.rnd.inc
+        msg.instances.iterateOverAll( i => { 
+          val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
+          context.become(proposerBehavior(config, instances + (i -> phase1A(Configure(i, crnd), state, config))))
+        })
+      }
+      //else forward to coordinator of msg.rnd
+        
 
     case msg: Proposal =>
       log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")

@@ -9,7 +9,7 @@ case class Round(count: Int, coordinator: Set[ActorRef], cfproposers: Set[ActorR
     case n => n.toInt
   }
 
-  def ++(): Round = Round(this.count + 1, this.coordinator, this.cfproposers)
+  def inc(): Round = Round(this.count + 1, this.coordinator, this.cfproposers)
 
   override def toString = s"< " + count + "; " + { if(coordinator.nonEmpty) coordinator.head.hashCode else coordinator } + "; " + { if(cfproposers.nonEmpty) cfproposers.map(x => x.hashCode).mkString(" , ") else cfproposers } + " >"
   }

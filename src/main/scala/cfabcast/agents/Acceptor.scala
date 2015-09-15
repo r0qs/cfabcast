@@ -69,7 +69,7 @@ trait Acceptor extends ActorLogging {
       oldState
     }
   }
-  // FIXME: need to pass sender to functions!!!! not use self and sender inside async! 
+  // FIXME: need to pass sender to functions!!!! do not use sender inside async! 
   def phase1B(actorSender: ActorRef, msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
@@ -77,14 +77,14 @@ trait Acceptor extends ActorLogging {
       self ! UpdateARound(msg.rnd)
       actorSender ! Msg1B(msg.instance, msg.rnd, oldState.vrnd, oldState.vval)
     } else {
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} and sender ${actorSender} is not a COORDINATOR with STATE: ${oldState}")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or sender ${actorSender} is not a COORDINATOR with STATE: ${oldState}")
     }
     oldState
   }
 
   def acceptorBehavior(config: ClusterConfiguration, instances: Map[Int, Future[AcceptorMeta]])(implicit ec: ExecutionContext): Receive = {
     case GetState =>
-      instances.foreach({case (instance, state) => 
+     instances.foreach({case (instance, state) => 
         state onSuccess {
           case s => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, self, s)
         }
@@ -96,14 +96,22 @@ trait Acceptor extends ActorLogging {
     case msg: Msg1A =>
       log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
-      context.become(acceptorBehavior(config, instances + (msg.instance ->  phase1B(sender, msg, state, config))))
+      context.become(acceptorBehavior(config, instances + (msg.instance -> phase1B(sender, msg, state, config))))
 
-/*    case msg: Msg1Am =>
-      log.info("Received MSG1A from {}", sender.hashCode)
-      msg.instance.foreach(i => { 
-        val state = instances(i)
-        context.become(acceptorBehavior(config, instances + (i ->  phase1B(msg, state, config))))
-      })*/
+    case msg: Msg1Am =>
+      val instancesAccepted = IRange.fromMap(instances)
+      log.debug(s"Try execute PHASE1B for instances: ${instancesAccepted} - ${self} receive ${msg} from ${sender}")
+      if (instancesAccepted.isEmpty) {
+        val instance = instancesAccepted.next //get the initial instance: 0
+        val state = instances.getOrElse(instance, Future.successful(AcceptorMeta(Round(), None)))  
+        context.become(acceptorBehavior(config, instances + (instance ->  phase1B(sender, Msg1A(instance, msg.rnd), state, config))))
+      } else {
+        instancesAccepted.iterateOverAll(i => {
+          log.info(s"Handle 1A for instance: ${i} and round: ${msg.rnd}")
+          val state = instances(i)
+          context.become(acceptorBehavior(config, instances + (i ->  phase1B(sender, Msg1A(i, msg.rnd), state, config))))
+        })
+      }
 
     // Phase2B
     case msg: Msg2S =>

@@ -181,7 +181,7 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
       notifyAll(actualConfig)
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
-      if (waitFor == actualConfig.acceptors.size) 
+      if (actualConfig.acceptors.size >= waitFor) 
         leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
       context.become(configuration(actualConfig))
 
