@@ -26,19 +26,19 @@ trait Acceptor extends ActorLogging {
     // Cond 1
     if (rnd <= msg.rnd) {
       if ((!msg.value.get.isEmpty && oldState.vrnd < msg.rnd) || oldState.vval == None) {
-        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} Cond1 satisfied with msg VALUE: ${msg.value}")
+        log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B1 - ${self} Cond1 satisfied with msg VALUE: ${msg.value}")
         self ! UpdateARound(msg.rnd)
         val newState = oldState.copy(vrnd = msg.rnd, vval = msg.value)
         config.learners foreach (_ ! Msg2B(msg.instance, rnd, newState.vval))
         persistentAcceptor ! Persist(Map(msg.instance -> newState))
         newState
       } else {
-        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} Cond1 NOT satisfied with msg VALUE: ${msg.value} and ROUND: ${msg.rnd} with STATE: ${oldState}")
+        log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${rnd} - PHASE2B1 - ${self} Cond1 NOT satisfied with msg VALUE: ${msg.value} and ROUND: ${msg.rnd} with STATE: ${oldState}")
         oldState
       }
     } else {
       //TODO: update my round to greatest seen
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B1 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} with STATE: ${oldState}")
+      log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B1 - ${self} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} with STATE: ${oldState}")
       oldState
     }
   }
@@ -46,7 +46,7 @@ trait Acceptor extends ActorLogging {
   def phase2B2(actorSender: ActorRef, msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (rnd <= msg.rnd && msg.value.get.get(actorSender) != Nil) {
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} Cond2 satisfied with msg VALUE: ${msg.value}")
+      log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${self} Cond2 satisfied with msg VALUE: ${msg.value}")
       // FIXME: Is thread-safe do this!?
       var value = VMap[Values]()
       if (oldState.vrnd < msg.rnd || oldState.vval == None) {
@@ -60,7 +60,7 @@ trait Acceptor extends ActorLogging {
       }
       val newState = oldState.copy(vrnd = msg.rnd, vval = Some(value))
       self ! UpdateARound(msg.rnd)
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${self} accept VALUE: ${newState.vval}")
+      log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${self} accept VALUE: ${newState.vval}")
       config.learners foreach (_ ! Msg2B(msg.instance, msg.rnd, newState.vval))
       persistentAcceptor ! Persist(Map(msg.instance -> newState))
       newState

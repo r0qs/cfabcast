@@ -74,11 +74,12 @@ trait Proposer extends ActorLogging {
     val oldState = await(state)
     //FIXME: This quorum need to be similar to learners quorum
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
+    log.info(s"INSTANCE: ${msg.instance} - PHASE2START - ROUND: ${msg.rnd}- PROPOSER: ${self} with PRND: ${prnd}, CRND: ${crnd}, GRND: ${grnd} - QUORUM(${quorum.size}) == (${config.quorumSize}): ${quorum}")
     if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && oldState.cval == None) {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
       val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
       val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
-      log.info(s"PHASE2START - INSTANCE: ${msg.instance} - S= ${S}")
+      log.info(s"INSTANCE: ${msg.instance} - PHASE2START - ROUND: ${msg.rnd} - S= ${S}")
       if(S.isEmpty) {
         val newState = oldState.copy(cval = Some(VMap[Values]())) //Bottom vmap
         config.proposers.foreach(_ ! Msg2S(msg.instance, msg.rnd, Some(VMap[Values]())))
@@ -120,7 +121,11 @@ trait Proposer extends ActorLogging {
     }
   }
 
-  def getRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
+  def getCRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
+
+  def checkAndUpdateGRound(c: Int): Unit = {
+    if (c > grnd.count) grnd = grnd.copy(count = c)
+  }
 
 /*  def proposeRetry(actorRef: ActorRef, instance: Int, round: Round, vmap: Option[VMap[Values]]): Future[Any] = {
     implicit val timeout = Timeout(1 seconds)
@@ -152,7 +157,6 @@ trait Proposer extends ActorLogging {
           }
       }
         
-
     case msg: UpdatePRound => 
       log.info(s"${self} - My prnd: ${prnd} crnd: ${crnd} -- Updating to prnd ${msg.prnd} crnd: ${msg.crnd}")
       if(prnd < msg.prnd) {
@@ -183,7 +187,7 @@ trait Proposer extends ActorLogging {
                 case Success(d) => 
                   d.complement().iterateOverAll(i => {
                     val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
-                    val rnd = Round(getRoundCount, Set(self), cfp)
+                    val rnd = Round(getCRoundCount, Set(self), cfp)
                     val msg = Configure(i, rnd)
                     log.debug(s"${self} Configure INSTANCE: ${i} using ROUND: ${rnd}")
                     context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
@@ -223,11 +227,11 @@ trait Proposer extends ActorLogging {
 
     case msg: Msg1B =>
       log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${sender}")
+      //val roundCount = if (msg.rnd.count > msg.vrnd.count) msg.rnd.count else msg.vrnd.count
+      //checkAndUpdateRoundsCount(roundCount)
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
-      //FIXME: Change this to be like learners quorum!
-      // WRONG!!! Override msgs for the same sender!
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
-      // Replaces msg 1B sent previously by the same acceptor in the same instance
+      // This replaces msg 1B sent previously by the same acceptor in the same instance
       quorumPerInstance(msg.instance) += (sender -> msg)
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Start(msg, state, config))))
 
@@ -287,31 +291,18 @@ trait Proposer extends ActorLogging {
         log.debug("Coordinator NOT FOUND for round {}", prnd)
       }
 
-    case msg @ TryPropose(instance, round, value) =>
+    case msg @ TryPropose(instance, rnd, value) =>
       if (instance > proposed) {
         log.debug(s"UPDATE proposed: ${proposed} to ${instance}")
         proposed = instance
       }
       log.debug(s"INSTANCE: ${instance} - ${self} receive ${msg} PROPOSING VALUE ${value}")
-      self ! Proposal(instance, round, Some(VMap(self -> value)))
+      self ! Proposal(instance, rnd, Some(VMap(self -> value)))
       // TODO: Repropose values not decided by the same cfproposer, save proposed values
       // How to know if value was not decided!?
-      //val learned: Future[Values] = (self ? Proposal(self, instance, round, Some(VMap(self -> msg.value)))).mapTo[Values]
+      //val learned: Future[Values] = (self ? Proposal(self, instance, rnd, Some(VMap(self -> msg.value)))).mapTo[Values]
       //learned.pipeTo(self)
 
-/*    case msg: Learned =>
-      //proposeRetry(self, instance, round, Some(VMap(self -> msg.value))).asInstanceOf[Future[Values]]
-      log.info("{} PROPOSED {} and LEARNED {}",self, msg.value, l)
-      if (msg.learned != msg.value) {
-        log.info(s"${self} Not learn the proposed value ${msg.value}, trying repropose...")
-        self ! MakeProposal(msg.value)
-      } else {
-        log.info(s"${self} Successful proposed and learned: ${l} ")
-      }*/
-
-//    case ProposedIn(instance, value) =
-      // proposed = instance
-      //proposedValueIn += (instance -> Some(value))
   }
 }
 
