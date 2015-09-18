@@ -11,9 +11,10 @@ import com.typesafe.config.Config
 import com.typesafe.config.ConfigObject
 
 class CFABCastSettings(config: Config) extends Extension {
+  // System configuration
   private val cc = config.getConfig("cfabcast")
 
-  //val Roles: Set[String] = immutableSeq(cc.getStringList("roles")).toSet
+  //val Roles: Set[String] = immutableSeq(config.getStringList("akka.cluster.roles")).toSet
   
   val MinNrOfNodes: Int = {
     cc.getInt("min-nr-of-nodes")
@@ -25,11 +26,26 @@ class CFABCastSettings(config: Config) extends Extension {
       case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getInt("min-nr-of-agents"))
     }.toMap
   }
+ 
+  val NodeId: String = cc.getString("node-id")
+
+  // Node configuration
+  val nc: Config = cc.getConfig(s"nodes.${NodeId}")
 
   val NrOfAgentsOfRoleOnNode: Map[String, Int] = {
     import scala.collection.JavaConverters._
-    cc.getConfig("node").root.asScala.collect {
+    nc.root.asScala.collect {
       case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getInt("nr-of-agents"))
+    }.toMap
+  }
+
+  // Acceptor configuration
+  val ac: Config = nc.getConfig("acceptor")
+
+  val AcceptorIdsByName: Map[String, String] = {
+    import scala.collection.JavaConverters._
+    ac.root.asScala.collect {
+      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getString("id"))
     }.toMap
   }
 }

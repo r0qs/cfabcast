@@ -22,8 +22,15 @@ import cfabcast.serialization.CFABCastSerializer
  * Cluster node
  * This node will handle the request of some client command
  */
-class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorLogging {
+class Node extends Actor with ActorLogging {
+  val serializer = new CFABCastSerializer(context.system.asInstanceOf[ExtendedActorSystem])
   val cluster = Cluster(context.system)
+  val settings = Settings(context.system)
+  val nodeId = settings.NodeId
+  val waitFor = settings.MinNrOfAgentsOfRole("acceptor")
+  val nodeAgents = settings.NrOfAgentsOfRoleOnNode
+  log.info(s"NODE AGENTS: ${nodeAgents}")
+  val acceptorsIds = settings.AcceptorIdsByName
 
   // Agents of the protocol
   var proposers = Set.empty[ActorRef]
@@ -36,31 +43,20 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   // Associated servers
   var servers = Set.empty[ActorRef]
 
-  val serializer = new CFABCastSerializer(context.system.asInstanceOf[ExtendedActorSystem])
-
   // Creates actors on this node
-  for ((t, a) <- nodeAgents) {
-    t match {
-      case "proposer" => for (b <- 1 to a) { 
-        proposers += context.actorOf(Props[ProposerActor], name=s"proposer-$b-${self.hashCode}") 
+  for ((role, nrOfAgents) <- nodeAgents) {
+    role match {
+      case "proposer" => for (b <- 1 to nrOfAgents) { 
+        proposers += context.actorOf(Props[ProposerActor], name=s"$nodeId-proposer$b") 
       }
-      case "acceptor" => for (b <- 1 to a) {
-        acceptors += context.actorOf(Props[AcceptorActor], name=s"acceptor-$b-${self.hashCode}") 
+      case "learner"  => for (b <- 1 to nrOfAgents) {
+        learners  += context.actorOf(Props[LearnerActor], name=s"$nodeId-learner$b")
       }
-      case "learner"  => for (b <- 1 to a) {
-        learners  += context.actorOf(Props[LearnerActor], name=s"learner-$b-${self.hashCode}")
-      }
+      case "acceptor" => //do nothing
     }
   }
-
-  // Subscribe to cluster changes, MemberUp
-  override def preStart(): Unit = {
-    cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
-  }
-
-  // Unsubscribe when stop to re-subscripe when restart
-  override def postStop(): Unit = {
-    cluster.unsubscribe(self)
+  for ((name, id) <- acceptorsIds) {
+    acceptors += context.actorOf(AcceptorActor.props(id), name=s"$name") 
   }
 
   // A Set of nodes(members) in the cluster that this node knows about
@@ -76,6 +72,16 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
   val cfproposerOracle = context.actorOf(Props[CFProposerOracle], "cfproposerOracle")
 
   val myConfig = ClusterConfiguration(proposers, acceptors, learners)
+
+  // Subscribe to cluster changes, MemberUp
+  override def preStart(): Unit = {
+    cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
+  }
+
+  // Unsubscribe when stop to re-subscripe when restart
+  override def postStop(): Unit = {
+    cluster.unsubscribe(self)
+  }
 
   def memberPath(address: Address): ActorPath = RootActorPath(address) / "user" / "*"
   
@@ -111,7 +117,11 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
           config.proposers.zipWithIndex.foreach { case (ref, i) =>
             ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
-        case _ => self ! Broadcast(serializer.toBinary(cmd))
+        case _ => 
+          if(proposers.nonEmpty)
+            self ! Broadcast(serializer.toBinary(cmd))
+          else
+            log.info(s"Ops!! This node [${nodeId}] don't have a proposer to handle commands.")
       }
 
     case TakeIntervals(interval) => log.info(s"Learner ${sender} learned in instances: ${interval}") 
@@ -208,8 +218,4 @@ class Node(waitFor: Int, nodeAgents: Map[String, Int]) extends Actor with ActorL
     case _ =>
       log.error("A unknown message received!")
   }
-}
-
-object Node {
-  def props(waitFor: Int, nodeAgents: Map[String, Int]) : Props = Props(classOf[Node], waitFor, nodeAgents)
 }

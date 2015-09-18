@@ -16,11 +16,6 @@ import akka.persistence._
 trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
 
-  override def preStart(): Unit = {
-    log.info("Acceptor ID: {} UP on {}", self.hashCode, self.path)
-    // Request a snapshot
-  }
-
   def phase2B1(msg: Msg2S, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     // Cond 1
@@ -145,8 +140,8 @@ trait Acceptor extends ActorLogging {
       
 }
 
-class PersistentAcceptor extends PersistentActor {
-  override def persistenceId = "sample-id-0"
+class PersistentAcceptor(id: String) extends PersistentActor {
+  override def persistenceId = s"persistentAcceptor-$id"
 
   var state = AcceptorState()
 
@@ -170,10 +165,24 @@ class PersistentAcceptor extends PersistentActor {
 
 }
 
-class AcceptorActor extends Actor with Acceptor {
+object PersistentAcceptor {
+  def props(id: String) : Props = Props(classOf[PersistentAcceptor], id)
+}
+
+class AcceptorActor(id: String) extends Actor with Acceptor {
   var rnd: Round = Round()
   
-  val persistentAcceptor = context.actorOf(Props[PersistentAcceptor], "persistentAcceptor-0")
+  val persistentAcceptor = context.actorOf(PersistentAcceptor.props(id), s"persistentActor-$id")
+
+  override def preStart(): Unit = {
+    log.info("Acceptor ID: {} UP on {}", self.hashCode, self.path)
+    // Request a snapshot
+  }
 
   def receive = acceptorBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
 }
+
+object AcceptorActor {
+  def props(id: String) : Props = Props(classOf[AcceptorActor], id)
+}
+
