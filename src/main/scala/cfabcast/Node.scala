@@ -30,12 +30,15 @@ class Node extends Actor with ActorLogging {
   val waitFor = settings.MinNrOfAgentsOfRole("acceptor")
   val nodeAgents = settings.NrOfAgentsOfRoleOnNode
   log.info(s"NODE AGENTS: ${nodeAgents}")
+  val proposersIds = settings.ProposerIdsByName
+  val learnersIds = settings.LearnerIdsByName
   val acceptorsIds = settings.AcceptorIdsByName
 
   // Agents of the protocol
-  var proposers = Set.empty[ActorRef]
-  var acceptors = Set.empty[ActorRef]
-  var learners  = Set.empty[ActorRef]
+  // FIXME declare key type in configuration file
+  var proposers = MMap.empty[AgentId, ActorRef]
+  var acceptors = MMap.empty[AgentId, ActorRef]
+  var learners  = MMap.empty[AgentId, ActorRef]
 
   // Associated clients
   var clients = Set.empty[ActorRef]
@@ -43,21 +46,21 @@ class Node extends Actor with ActorLogging {
   // Associated servers
   var servers = Set.empty[ActorRef]
 
-  // Creates actors on this node
-  for ((role, nrOfAgents) <- nodeAgents) {
-    role match {
-      case "proposer" => for (b <- 1 to nrOfAgents) { 
-        proposers += context.actorOf(Props[ProposerActor], name=s"$nodeId-proposer$b") 
-      }
-      case "learner"  => for (b <- 1 to nrOfAgents) {
-        learners  += context.actorOf(Props[LearnerActor], name=s"$nodeId-learner$b")
-      }
-      case "acceptor" => //do nothing
-    }
+  for((name, id) <- proposersIds) {
+    proposers(id) = context.actorOf(ProposerActor.props(id), name=s"$name") 
   }
+
+  for ((name, id) <- learnersIds) {
+    learners(id) = context.actorOf(LearnerActor.props(id), name=s"$name") 
+  }
+
   for ((name, id) <- acceptorsIds) {
-    acceptors += context.actorOf(AcceptorActor.props(id), name=s"$name") 
+    acceptors(id) = context.actorOf(AcceptorActor.props(id), name=s"$name") 
   }
+
+  log.debug(s"PROPOSERS: ${proposers}")
+  log.debug(s"ACCEPTORS: ${acceptors}")
+  log.debug(s"LEARNERS: ${learners}")
 
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
@@ -86,9 +89,9 @@ class Node extends Actor with ActorLogging {
   def memberPath(address: Address): ActorPath = RootActorPath(address) / "user" / "*"
   
   def notifyAll(config: ClusterConfiguration) = {
-    for (p <- proposers if !proposers.isEmpty) { p ! UpdateConfig(config) }
-    for (a <- acceptors if !acceptors.isEmpty) { a ! UpdateConfig(config) }
-    for (l <- learners  if !learners.isEmpty)  { l ! UpdateConfig(config) }
+    for (p <- proposers.values if !proposers.isEmpty) { p ! UpdateConfig(config) }
+    for (a <- acceptors.values if !acceptors.isEmpty) { a ! UpdateConfig(config) }
+    for (l <- learners.values  if !learners.isEmpty)  { l ! UpdateConfig(config) }
   }
 
   def register(member: Member): Unit = {
@@ -107,14 +110,14 @@ class Node extends Actor with ActorLogging {
     case Command(cmd: String) =>
       log.info("Received COMMAND {} ", cmd)
       cmd match {
-        case "pstate"   => proposers.foreach(_ ! GetState) 
-        case "astate"   => acceptors.foreach(_ ! GetState) 
-        case "lstate"   => learners.foreach(_ ! GetState)
-        case "interval" => learners.foreach(_ ! GetIntervals)
-        case "snap"     => acceptors.foreach(_ ! "snap")
-        case "print"    => acceptors.foreach(_ ! "print")
+        case "pstate"   => proposers.values.foreach(_ ! GetState) 
+        case "astate"   => acceptors.values.foreach(_ ! GetState) 
+        case "lstate"   => learners.values.foreach(_ ! GetState)
+        case "interval" => learners.values.foreach(_ ! GetIntervals)
+        case "snap"     => acceptors.values.foreach(_ ! "snap")
+        case "print"    => acceptors.values.foreach(_ ! "print")
         case "all"      => 
-          config.proposers.zipWithIndex.foreach { case (ref, i) =>
+          config.proposers.values.zipWithIndex.foreach { case (ref, i) =>
             ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
         case _ => 
@@ -133,7 +136,7 @@ class Node extends Actor with ActorLogging {
         log.debug("Receive proposal: {} from {} and sending to {}", serializer.fromBinary(data),sender, proposers)
         // TODO: Clients must be associated with a proposer
         // and servers with a learner (cluster client)
-        proposers.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
+        proposers.values.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
       }
       else
         log.debug("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
@@ -192,7 +195,7 @@ class Node extends Actor with ActorLogging {
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
       if (actualConfig.acceptors.size >= waitFor) 
-        leaderOracle ! MemberChange(actualConfig, proposers, waitFor)
+        leaderOracle ! MemberChange(actualConfig, proposers.values.toSet, waitFor)
       context.become(configuration(actualConfig))
 
     case UnreachableMember(member) =>
@@ -205,7 +208,7 @@ class Node extends Actor with ActorLogging {
       //TODO identify when a client or a server disconnect and remove them.
 
     //FIXME: All proposers are collision fast
-    case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers)
+    case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers.values.toSet)
 
     // TODO: Improve this
     case Terminated(ref) =>

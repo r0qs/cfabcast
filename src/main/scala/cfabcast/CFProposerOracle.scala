@@ -10,7 +10,7 @@ class CFProposerOracle extends Actor with ActorLogging {
   val settings = Settings(context.system)
   def receive = {
     //TODO: do this based on Phi Accrual failure detector
-    case msg: ProposerSet => chooseCFProposers(msg.replyTo, msg.proposers)
+    case msg: ProposerSet => chooseCFProposers(msg.replyTo, msg.proposersRef)
   }
 
   def randSet[T](items: Set[T], until: Int = 1): Set[T] = {
@@ -24,9 +24,9 @@ class CFProposerOracle extends Actor with ActorLogging {
     randomChoice(items.toVector, until, Set())
   }      
 
-  def chooseCFProposers(replyTo: ActorRef, proposers: Set[ActorRef]) = {
+  def chooseCFProposers(replyTo: ActorRef, proposersRef: Set[ActorRef]) = {
       val n = settings.MinNrOfAgentsOfRole("cfproposer")
-      val chosen = randSet[ActorRef](proposers, n)
+      val chosen = randSet[ActorRef](proposersRef, n)
       replyTo ! chosen
       log.info("The new set of Collision-fast Proposers is: {}", chosen)
   }

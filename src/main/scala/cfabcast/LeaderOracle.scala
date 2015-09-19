@@ -7,12 +7,12 @@ import cfabcast.messages._
 class LeaderOracle extends Actor with ActorLogging {
   
   def receive = {
-    case msg: MemberChange => doLeaderElection(msg.config, msg.nodeProposers, msg.waitFor)
+    case msg: MemberChange => doLeaderElection(msg.config, msg.notifyTo, msg.waitFor)
   }
 
-  def doLeaderElection(config: ClusterConfiguration, nodeProposers: Set[ActorRef], waitFor: Int) = {
-      val leader = config.proposers.minBy(_.hashCode)
-      nodeProposers.foreach(_ ! NewLeader(Set(leader), waitFor))
+  def doLeaderElection(config: ClusterConfiguration, notifyTo: Set[ActorRef], waitFor: Int) = {
+      val leader = config.proposers.values.minBy(_.hashCode)
+      notifyTo.foreach(_ ! NewLeader(Set(leader), waitFor))
       log.info("The new leader is: {}", leader.hashCode)
   }
 }

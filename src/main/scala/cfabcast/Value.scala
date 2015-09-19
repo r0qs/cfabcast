@@ -3,7 +3,6 @@ package cfabcast
 import collection.mutable._
 import scala.collection.mutable.{Builder, MapBuilder}
 import scala.collection.generic.CanBuildFrom
-import akka.actor.ActorRef
 import java.io._
 import scala.collection.GenTraversableOnce
 
@@ -44,10 +43,10 @@ object Nil extends Values{
   override def toString: String = "Nil"
 }
 
-// Map a ActorRef identifier to a Value
+// Map a AgentId identifier to a Value
 class VMap[T] private
-extends LinkedHashMap[ActorRef, T]
-  with MapLike[ActorRef, T, VMap[T]] {
+extends LinkedHashMap[AgentId, T]
+  with MapLike[AgentId, T, VMap[T]] {
 
   def isSingleMap: Boolean = this.size == 1
 
@@ -80,24 +79,24 @@ extends LinkedHashMap[ActorRef, T]
 object VMap {
   def empty[T] = new VMap[T]
   
-  def apply[T](vmaps: (ActorRef, T)*): VMap[T] = {
+  def apply[T](vmaps: (AgentId, T)*): VMap[T] = {
     val nvm: VMap[T] = empty
     for (vm <- vmaps) nvm += vm
     nvm
   }
 
-  def fromList[T](s: List[(ActorRef, T)]): VMap[T] = {
+  def fromList[T](s: List[(AgentId, T)]): VMap[T] = {
     val nvm: VMap[T] = empty
     for (vm <- s) nvm += vm
     nvm
   }
 
-  def newBuilder[T]: Builder[(ActorRef, T), VMap[T]] =
-    new MapBuilder[ActorRef, T, VMap[T]](empty)
+  def newBuilder[T]: Builder[(AgentId, T), VMap[T]] =
+    new MapBuilder[AgentId, T, VMap[T]](empty)
 
   implicit def canBuildFrom[T]
-    : CanBuildFrom[VMap[_], (ActorRef, T), VMap[T]] =
-      new CanBuildFrom[VMap[_], (ActorRef, T), VMap[T]] {
+    : CanBuildFrom[VMap[_], (AgentId, T), VMap[T]] =
+      new CanBuildFrom[VMap[_], (AgentId, T), VMap[T]] {
         def apply(from: VMap[_]) = newBuilder[T]
         def apply() = newBuilder[T]
       }

@@ -39,8 +39,26 @@ class CFABCastSettings(config: Config) extends Extension {
     }.toMap
   }
 
-  // Acceptor configuration
+  // Agents configuration
+  val pc: Config = nc.getConfig("proposer")
+
+  val lc: Config = nc.getConfig("learner")
+
   val ac: Config = nc.getConfig("acceptor")
+
+  val ProposerIdsByName: Map[String, String] = {
+    import scala.collection.JavaConverters._
+    pc.root.asScala.collect {
+      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getString("id"))
+    }.toMap
+  }
+
+  val LearnerIdsByName: Map[String, String] = {
+    import scala.collection.JavaConverters._
+    lc.root.asScala.collect {
+      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getString("id"))
+    }.toMap
+  }
 
   val AcceptorIdsByName: Map[String, String] = {
     import scala.collection.JavaConverters._
