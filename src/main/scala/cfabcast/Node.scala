@@ -9,8 +9,11 @@ import akka.actor.Terminated
 import akka.cluster.ClusterEvent._
 import akka.actor.ExtendedActorSystem
 import com.typesafe.config.ConfigFactory
+import akka.contrib.pattern.ClusterReceptionistExtension
+import akka.actor.SupervisorStrategy.{Restart, Stop}
+import akka.actor.OneForOneStrategy
 
-import scala.concurrent.ExecutionContext.Implicits.global
+//import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
 import scala.collection.immutable.Set
 
@@ -33,6 +36,7 @@ class Node extends Actor with ActorLogging {
   val proposersIds = settings.ProposerIdsByName
   val learnersIds = settings.LearnerIdsByName
   val acceptorsIds = settings.AcceptorIdsByName
+  val protocolRoles = settings.ProtocolRoles
 
   // Agents of the protocol
   // FIXME declare key type in configuration file
@@ -79,6 +83,8 @@ class Node extends Actor with ActorLogging {
   // Subscribe to cluster changes, MemberUp
   override def preStart(): Unit = {
     cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
+    log.info(s"Registering Recepcionist on node: $nodeId")
+    ClusterReceptionistExtension(context.system).registerService(self)
   }
 
   // Unsubscribe when stop to re-subscripe when restart
@@ -99,6 +105,12 @@ class Node extends Actor with ActorLogging {
       nodes += member.address
       context.actorSelection(memberPath(member.address)) ! Identify(member)
     }
+  }
+ 
+  override val supervisorStrategy = OneForOneStrategy(loggingEnabled = false) {
+    case e: Exception =>
+      log.error("EXCEPTION: {} ---- MESSAGE: {} ---- PrintStackTrace: {}", e, e.getMessage, e.printStackTrace)
+      Stop
   }
 
   def receive = configuration(myConfig)
@@ -158,6 +170,7 @@ class Node extends Actor with ActorLogging {
             }
         })
       }
+
     case state: CurrentClusterState =>
       log.info("Current members: {}", state.members)
 
@@ -194,8 +207,9 @@ class Node extends Actor with ActorLogging {
       notifyAll(actualConfig)
       //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
       // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
-      if (actualConfig.acceptors.size >= waitFor) 
+      if (actualConfig.acceptors.size >= waitFor) {
         leaderOracle ! MemberChange(actualConfig, proposers.values.toSet, waitFor)
+      }
       context.become(configuration(actualConfig))
 
     case UnreachableMember(member) =>

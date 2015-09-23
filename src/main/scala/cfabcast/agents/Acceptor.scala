@@ -24,7 +24,7 @@ trait Acceptor extends ActorLogging {
         log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B1 - ${id} Cond1 satisfied with msg VALUE: ${msg.value}")
         self ! UpdateARound(msg.rnd)
         val newState = oldState.copy(vrnd = msg.rnd, vval = msg.value)
-        config.learners.values foreach (_ ! Msg2B(msg.instance, rnd, newState.vval))
+        config.learners.values foreach (_ ! Msg2B(id, msg.instance, rnd, newState.vval))
         persistentAcceptor ! Persist(Map(msg.instance -> newState))
         newState
       } else {
@@ -38,47 +38,51 @@ trait Acceptor extends ActorLogging {
     }
   }
 
-  def phase2B2(actorSender: ActorRef, msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
+  def phase2B2(msg: Msg2A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
-    val senderId = config.reverseProposers(actorSender)
-    if (rnd <= msg.rnd && msg.value.get(senderId) != Nil) {
-      log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${id} Cond2 satisfied with msg VALUE: ${msg.value}")
-      // FIXME: Is thread-safe do this!?
-      var value = VMap[Values]()
-      if (oldState.vrnd < msg.rnd || oldState.vval == None) {
-        // extends value and put Nil for all proposers
-        value = msg.value.get
-        for (p <- (config.proposers.values.toSet diff msg.rnd.cfproposers)) value += (config.reverseProposers(p) -> Nil)
-        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} Extending vval with NIL ${value} in round ${msg.rnd}")
+    if (msg.value.get.contains(msg.senderId)) {
+      if (rnd <= msg.rnd && msg.value.get(msg.senderId) != Nil) {
+        log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${id} Cond2 satisfied with msg VALUE: ${msg.value}")
+        // FIXME: Is thread-safe do this!?
+        var value = VMap[Values]()
+        if (oldState.vrnd < msg.rnd || oldState.vval == None) {
+          // extends value and put Nil for all proposers
+          value = msg.value.get
+          for (p <- (config.proposers.values.toSet diff msg.rnd.cfproposers)) value += (config.reverseProposers(p) -> Nil)
+          log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} Extending vval with NIL ${value} in round ${msg.rnd}")
+        } else {
+          value = oldState.vval.get ++ msg.value.get
+          log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} Extending vval with VALUE ${value} in round ${msg.rnd}")
+        }
+        val newState = oldState.copy(vrnd = msg.rnd, vval = Some(value))
+        self ! UpdateARound(msg.rnd)
+        log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${id} accept VALUE: ${newState.vval}")
+        config.learners.values foreach (_ ! Msg2B(id, msg.instance, msg.rnd, newState.vval))
+        persistentAcceptor ! Persist(Map(msg.instance -> newState))
+        newState
       } else {
-        value = oldState.vval.get ++ msg.value.get
-        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} Extending vval with VALUE ${value} in round ${msg.rnd}")
+        log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or VALUE: ${msg.value.get(msg.senderId)} is NIL with STATE: ${oldState}")
+        oldState
       }
-      val newState = oldState.copy(vrnd = msg.rnd, vval = Some(value))
-      self ! UpdateARound(msg.rnd)
-      log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${id} accept VALUE: ${newState.vval}")
-      config.learners.values foreach (_ ! Msg2B(msg.instance, msg.rnd, newState.vval))
-      persistentAcceptor ! Persist(Map(msg.instance -> newState))
-      newState
     } else {
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or VALUE: ${msg.value.get(senderId)} is NIL with STATE: ${oldState}")
-      oldState
+        log.debug(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
+        oldState
     }
   }
-  // FIXME: need to pass sender to functions!!!! do not use sender inside async! 
+  
   def phase1B(actorSender: ActorRef, msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${id} sending STATE: ${oldState} to COORDINATOR: ${config.reverseProposers(actorSender)}")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${id} sending STATE: ${oldState} to COORDINATOR: ${msg.senderId}")
       self ! UpdateARound(msg.rnd)
-      actorSender ! Msg1B(msg.instance, msg.rnd, oldState.vrnd, oldState.vval)
+      actorSender ! Msg1B(id, msg.instance, msg.rnd, oldState.vrnd, oldState.vval)
     } else {
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${id} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or sender ${config.reverseProposers(actorSender)} is not a COORDINATOR with STATE: ${oldState}")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE1B - ${id} RND: ${rnd} is greater than msg ROUND: ${msg.rnd} or sender ${msg.senderId} is not a COORDINATOR with STATE: ${oldState}")
     }
     oldState
   }
 
-  def acceptorBehavior(config: ClusterConfiguration, instances: Map[Int, Future[AcceptorMeta]])(implicit ec: ExecutionContext): Receive = {
+  def acceptorBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[AcceptorMeta]])(implicit ec: ExecutionContext): Receive = {
     case GetState =>
      instances.foreach({case (instance, state) => 
         state onSuccess {
@@ -90,35 +94,35 @@ trait Acceptor extends ActorLogging {
 
     // Phase1B
     case msg: Msg1A =>
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${config.reverseProposers(sender)}")
+      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase1B(sender, msg, state, config))))
 
     case msg: Msg1Am =>
       val instancesAccepted = IRange.fromMap(instances)
-      log.debug(s"Try execute PHASE1B for instances: ${instancesAccepted} - ${id} receive ${msg} from ${config.reverseProposers(sender)}")
+      log.debug(s"Try execute PHASE1B for instances: ${instancesAccepted} - ${id} receive ${msg} from ${msg.senderId}")
       if (instancesAccepted.isEmpty) {
         val instance = instancesAccepted.next //get the initial instance: 0
         val state = instances.getOrElse(instance, Future.successful(AcceptorMeta(Round(), None)))  
-        context.become(acceptorBehavior(config, instances + (instance ->  phase1B(sender, Msg1A(instance, msg.rnd), state, config))))
+        context.become(acceptorBehavior(config, instances + (instance ->  phase1B(sender, Msg1A(msg.senderId, instance, msg.rnd), state, config))))
       } else {
         instancesAccepted.iterateOverAll(i => {
           log.info(s"Handle 1A for instance: ${i} and round: ${msg.rnd}")
           val state = instances(i)
-          context.become(acceptorBehavior(config, instances + (i ->  phase1B(sender, Msg1A(i, msg.rnd), state, config))))
+          context.become(acceptorBehavior(config, instances + (i ->  phase1B(sender, Msg1A(msg.senderId, i, msg.rnd), state, config))))
         })
       }
 
     // Phase2B
     case msg: Msg2S =>
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${config.reverseProposers(sender)}")
+      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B1(msg, state, config))))
     
     case msg: Msg2A =>
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${config.reverseProposers(sender)}")
+      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
       val state = instances.getOrElse(msg.instance, Future.successful(AcceptorMeta(Round(), None)))
-      context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(sender, msg, state, config))))
+      context.become(acceptorBehavior(config, instances + (msg.instance -> phase2B2(msg, state, config))))
     
     // TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
@@ -138,7 +142,6 @@ trait Acceptor extends ActorLogging {
       context.become(acceptorBehavior(config, m))
       //call configure to run phase 1A again
   }
-      
 }
 
 class PersistentAcceptor(id: AgentId) extends PersistentActor {
@@ -172,7 +175,6 @@ object PersistentAcceptor {
 
 class AcceptorActor(val id: AgentId) extends Actor with Acceptor {
   var rnd: Round = Round()
-  
   val persistentAcceptor = context.actorOf(PersistentAcceptor.props(id), s"persistentActor-$id")
 
   override def preStart(): Unit = {

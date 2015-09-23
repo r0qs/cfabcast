@@ -6,6 +6,9 @@ import akka.actor.ExtensionId
 import akka.actor.ExtensionIdProvider
 import akka.actor.ExtendedActorSystem
 import akka.util.Helpers.Requiring
+import akka.japi.Util.immutableSeq
+
+import scala.collection.immutable
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigObject
@@ -38,6 +41,8 @@ class CFABCastSettings(config: Config) extends Extension {
       case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getInt("nr-of-agents"))
     }.toMap
   }
+  
+  val ProtocolRoles: Set[String] = immutableSeq(nc.getStringList("roles")).toSet
 
   // Agents configuration
   val pc: Config = nc.getConfig("proposer")

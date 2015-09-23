@@ -11,14 +11,14 @@ sealed trait ClusterConfiguration {
   val acceptors: Map[AgentId, ActorRef]
   val learners:  Map[AgentId, ActorRef]
 
-  var reverseProposers = proposers.map(_.swap)
-  var reverseAcceptors = acceptors.map(_.swap)
-  var reverseLearners  = learners.map(_.swap)
+  var reverseProposers: Map[ActorRef, AgentId] = Map()
+  var reverseAcceptors: Map[ActorRef, AgentId] = Map()
+  var reverseLearners: Map[ActorRef, AgentId] = Map()
   
-  def reverseAll(config: ClusterConfiguration) = {
-    reverseProposers = proposers.map(_.swap)
-    reverseAcceptors = acceptors.map(_.swap)
-    reverseLearners  = learners.map(_.swap)
+  def reverseAll() = {
+    this.reverseProposers = this.proposers.map(_.swap)
+    this.reverseAcceptors = this.acceptors.map(_.swap)
+    this.reverseLearners  = this.learners.map(_.swap)
   }
 
   // TODO: sort by hashcode/id
@@ -27,7 +27,7 @@ sealed trait ClusterConfiguration {
       this.proposers ++ that.proposers,
       this.acceptors ++ that.acceptors,
       this.learners ++ that.learners)
-    reverseAll(c)
+    c.reverseAll
     c
   }
 
@@ -36,16 +36,26 @@ sealed trait ClusterConfiguration {
       this.proposers -- that.proposers.keys,
       this.acceptors -- that.acceptors.keys,
       this.learners -- that.learners.keys)
-    reverseAll(c)
+    c.reverseAll
     c
   }
 }
 
 object ClusterConfiguration {
-  def apply(proposers: Map[AgentId, ActorRef], acceptors: Map[AgentId, ActorRef], learners: Map[AgentId, ActorRef]): ClusterConfiguration =
-    SimpleClusterConfiguration((acceptors.size/2) + 1, proposers, acceptors, learners)
+  def apply(
+    proposers: Map[AgentId, ActorRef],
+    acceptors: Map[AgentId, ActorRef], 
+    learners: Map[AgentId, ActorRef]): ClusterConfiguration = {
+      val s = SimpleClusterConfiguration((acceptors.size/2) + 1, proposers, acceptors, learners)
+      s.reverseAll
+      s
+    }
   def apply(): ClusterConfiguration =
     SimpleClusterConfiguration(0, Map(), Map(), Map())
 }
 
-case class SimpleClusterConfiguration(quorumSize: Int, proposers: Map[AgentId, ActorRef], acceptors: Map[AgentId, ActorRef], learners: Map[AgentId, ActorRef]) extends ClusterConfiguration
+case class SimpleClusterConfiguration(
+  quorumSize: Int, 
+  proposers: Map[AgentId, ActorRef],
+  acceptors: Map[AgentId, ActorRef],
+  learners: Map[AgentId, ActorRef]) extends ClusterConfiguration

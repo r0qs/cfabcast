@@ -35,7 +35,7 @@ object Main {
     """).withFallback(defaultConfig)
 
     val system = ActorSystem("CFABCastSystem", config)
-    val node = system.actorOf(Props[Node], s"${nodeName}")
+    val node = system.actorOf(Props[Node], s"$nodeName")
    
     // FIXME: Put this in configuration using remote actor config
     startupSharedJournal(system, startStore = (port == "2551"), path =

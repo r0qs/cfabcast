@@ -10,29 +10,29 @@ import cfabcast.protocol._
 sealed class Message extends Serializable
 
 // Message sent by proposer p to the collision-fast proposer for the current round of p.
-case class Proposal(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Proposal(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by coordinator c to all acceptors.
-case class Msg1A(instance: Int, rnd: Round) extends Message
-case class Msg1Am(rnd: Round) extends Message
+case class Msg1A(senderId: AgentId, instance: Instance, rnd: Round) extends Message
+case class Msg1Am(senderId: AgentId, rnd: Round) extends Message
 
 // Message sent by acceptor a to the coordinator of round rnd.
-case class Msg1B(instance: Int, rnd: Round, vrnd: Round, vval: Option[VMap[Values]]) extends Message
+case class Msg1B(senderId: AgentId, instance: Instance, rnd: Round, vrnd: Round, vval: Option[VMap[Values]]) extends Message
 
 // Message sent by coordinator to all proposers and/or acceptors.
-case class Msg2S(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Msg2S(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by collision-fast proposer cfp to all acceptors and others collision-fast proposers on the same round rnd.
-case class Msg2A(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Msg2A(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by acceptor a to all learners.
-case class Msg2B(instance: Int, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Msg2B(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
 
 // Message sent by learners to all Agents if something was learned.
 case object Learn extends Message
 
 // Message sent to start the protocol (Phase1)
-case class Configure(instance: Int, rnd: Round) extends Message
+case class Configure(senderId: AgentId, instance: Instance, rnd: Round) extends Message
 
 case class Persist(data: Map[Int, AcceptorMeta]) extends Message
 case class ApplySnapShot(snapshot: AcceptorState) extends Message

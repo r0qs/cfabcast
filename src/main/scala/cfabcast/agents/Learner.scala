@@ -44,31 +44,32 @@ trait Learner extends ActorLogging {
   }
 
   // FIXME: Clean quorums when receive msgs from all agents of the instance
-  def learnerBehavior(config: ClusterConfiguration, instances: Map[Int, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
+  def learnerBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
 
     case msg: Msg2A =>
-      val senderId = config.reverseProposers(sender)
-      log.debug(s"INSTANCE: ${msg.instance} - ${self} receive ${msg} from ${senderId}")
-      if (msg.value.get(senderId) == Nil && msg.rnd.cfproposers(sender)) {
-        pPerInstance.getOrElseUpdate(msg.instance, MSet())
-        pPerInstance(msg.instance) += senderId
-        log.debug(s"INSTANCE: ${msg.instance} - MSG2A - ${id} add ${senderId} to pPerInstance ${pPerInstance(msg.instance)}")
-        val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()))))
-        context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
+      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
+      if (msg.value.get.contains(msg.senderId)) {
+        if (msg.value.get(msg.senderId) == Nil && msg.rnd.cfproposers(sender)) {
+          pPerInstance.getOrElseUpdate(msg.instance, MSet())
+          pPerInstance(msg.instance) += msg.senderId
+          log.debug(s"INSTANCE: ${msg.instance} - MSG2A - ${id} add ${msg.senderId} to pPerInstance ${pPerInstance(msg.instance)}")
+          val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()))))
+          context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
+        }
+      } else {
+        log.debug(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
       }
 
     case msg: Msg2B =>
-      val senderId = config.reverseAcceptors(sender)
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${senderId}")
+      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
       //FIXME: Implement quorum as a prefix tree
       quorumPerInstance.getOrElseUpdate(msg.instance, MMap())
-      val vm = quorumPerInstance(msg.instance).getOrElse(senderId, VMap[Values]())
+      val vm = quorumPerInstance(msg.instance).getOrElse(msg.senderId, VMap[Values]())
       // Replaces values proposed previously by the same proposer on the same instance
-      quorumPerInstance(msg.instance) += (senderId -> (vm ++ msg.value.get))
-      log.debug(s"INSTANCE: ${msg.instance} - MSG2B - ${id} add to ${senderId} in INSTANCE ${msg.instance} value: ${msg.value.get} to VMap: ${vm} in quorum")
+      quorumPerInstance(msg.instance) += (msg.senderId -> (vm ++ msg.value.get))
+      log.debug(s"INSTANCE: ${msg.instance} - MSG2B - ${id} add to ${msg.senderId} in INSTANCE ${msg.instance} value: ${msg.value.get} to VMap: ${vm} in quorum")
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()))))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
-
 
     case WhatULearn =>
       sender ! instancesLearned
@@ -105,15 +106,14 @@ trait Learner extends ActorLogging {
 
     case msg: UpdateConfig =>
       context.become(learnerBehavior(msg.config, instances))
-    // TODO MemberRemoved
   }
 }
 
 class LearnerActor(val id: AgentId) extends Actor with Learner {
   var instancesLearned: IRange = IRange()
-  val quorumPerInstance = MMap[Int, scala.collection.mutable.Map[AgentId, VMap[Values]]]()
-  val pPerInstance = MMap[Int, scala.collection.mutable.Set[AgentId]]()
-  val replies = MMap[Int, scala.collection.mutable.Set[AgentId]]()
+  val quorumPerInstance = MMap[Instance, scala.collection.mutable.Map[AgentId, VMap[Values]]]()
+  val pPerInstance = MMap[Instance, scala.collection.mutable.Set[AgentId]]()
+  val replies = MMap[Instance, scala.collection.mutable.Set[AgentId]]()
   
   override def preStart(): Unit = {
     log.info("Learner ID: {} UP on {}", id, self.path)

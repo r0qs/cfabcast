@@ -11,5 +11,7 @@ $ ./sbt_install.sh
 Please look in the official [documentation of sbt](http://www.scala-sbt.org/release/docs/Getting-Started/Running.html) for more commands.
 
 ```
-$ ./sbt/bin/sbt 'run-main Main 2551'
+$ ./sbt/bin/sbt 'run-main Main node1'
+$ ./sbt/bin/sbt 'run-main Main node2'
+$ ./sbt/bin/sbt 'run-main Main node3'
 ```
