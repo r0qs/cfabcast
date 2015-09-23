@@ -95,7 +95,7 @@ trait Proposer extends ActorLogging {
       } else {
         var value = VMap[Values]()
         for (p <- config.proposers.keys) value += (p -> Nil) 
-        val cval: VMap[Values] = VMap.lub(S) ++: value
+        val cval: VMap[Values] = value ++: VMap.lub(S) //preserve S values
         val newState = oldState.copy(cval = Some(cval))
         (config.proposers.values.toSet union config.acceptors.values.toSet).foreach(_ ! Msg2S(id, msg.instance, msg.rnd, Some(cval)))
         log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${id} appended value: ${cval} in ROUND: ${msg.rnd}")
