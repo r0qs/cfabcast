@@ -8,15 +8,16 @@ case class ProposerMeta(
 )extends Serializable
 
 case class AcceptorMeta(
+  rnd: Round,
   vrnd: Round,
   vval: Option[VMap[Values]]
 )extends Serializable
 
-case class Evt(data: Map[Int, AcceptorMeta])
+case class Evt(data: Map[Instance, AcceptorMeta])
 
-case class AcceptorState(events: Map[Int, AcceptorMeta] = Map()) {
+case class AcceptorState(events: Map[Instance, AcceptorMeta] = Map()) {
   def updated(evt: Evt): AcceptorState = { 
-    var m: Map[Int, AcceptorMeta] = Map()
+    var m: Map[Instance, AcceptorMeta] = Map()
     evt.data.foreach( { case (k, v) =>
       if (!events.contains(k)) {
         m += (k -> v)

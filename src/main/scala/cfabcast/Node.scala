@@ -108,7 +108,7 @@ class Node extends Actor with ActorLogging {
   }
  
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = false) {
-    case e: Exception =>
+    case e =>
       log.error("EXCEPTION: {} ---- MESSAGE: {} ---- PrintStackTrace: {}", e, e.getMessage, e.printStackTrace)
       Stop
   }

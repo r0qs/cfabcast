@@ -34,7 +34,7 @@ case object Learn extends Message
 // Message sent to start the protocol (Phase1)
 case class Configure(senderId: AgentId, instance: Instance, rnd: Round) extends Message
 
-case class Persist(data: Map[Int, AcceptorMeta]) extends Message
+case class Persist(data: Map[Instance, AcceptorMeta]) extends Message
 case class ApplySnapShot(snapshot: AcceptorState) extends Message
 
 /*
@@ -55,12 +55,11 @@ case object GetState extends Message
 
 case object GetIntervals extends Message
 case class TakeIntervals(interval: IRange) extends Message
-case class AcceptedInstances(instances: IRange, rnd: Round) extends Message
+case class UpdateRound(instance: Instance, rnd: Round) extends Message
 
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
-case class UpdateARound(rnd: Round) extends Message
 
-case class ProposedIn(instance: Int, value: Values) extends Message
+case class ProposedIn(instance: Instance, value: Values) extends Message
 
 /*
  * Cluster Messages

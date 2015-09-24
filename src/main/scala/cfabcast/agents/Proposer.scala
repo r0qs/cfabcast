@@ -36,7 +36,6 @@ trait Proposer extends ActorLogging {
   
   def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
-    //FIXME: msg.value.get(id) can return key not found exception!
     if (msg.value.get.contains(msg.senderId)) {
       if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None) && msg.value.get(msg.senderId) != Nil) {
         // Phase 2A for CFProposers
@@ -79,9 +78,8 @@ trait Proposer extends ActorLogging {
 
   def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
-    //FIXME: This quorum need to be similar to learners quorum
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
-    log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ROUND: ${msg.rnd}- PROPOSER: ${self} with PRND: ${prnd}, CRND: ${crnd}, GRND: ${grnd} - QUORUM(${quorum.size}) == (${config.quorumSize}): ${quorum}")
+    log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ROUND: ${msg.rnd}- ${id} with PRND: ${prnd}, CRND: ${crnd}, GRND: ${grnd} - QUORUM(${quorum.size}) == (${config.quorumSize}): ${quorum}")
     if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && oldState.cval == None) {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
       val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
@@ -102,7 +100,7 @@ trait Proposer extends ActorLogging {
         newState
       }
     } else {
-      log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${id} not meet the quorum requirements in ROUND: ${msg.rnd}")
+      log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${id} not meet the quorum requirements with MSG ROUND: ${msg.rnd} with state: ${oldState}")
       oldState
     }
   }  
@@ -129,10 +127,6 @@ trait Proposer extends ActorLogging {
   }
 
   def getCRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
-
-  def checkAndUpdateGRound(c: Int): Unit = {
-    if (c > grnd.count) grnd = grnd.copy(count = c)
-  }
 
 /*  def proposeRetry(actorRef: ActorRef, instance: Int, round: Round, vmap: Option[VMap[Values]]): Future[Any] = {
     implicit val timeout = Timeout(1 seconds)
@@ -177,6 +171,7 @@ trait Proposer extends ActorLogging {
 
     case NewLeader(newCoordinators: Set[ActorRef], until: Int) =>
       //TODO: Update the prnd with the new coordinator
+      //prnd = prnd.copy(coordinator = rnd.coordinator)
       coordinators = newCoordinators
       if(until <= config.acceptors.size) {
         log.info("Discovered the minimum of {} acceptors, starting protocol instance.", until)
@@ -192,12 +187,12 @@ trait Proposer extends ActorLogging {
             case Success(cfp) => 
               decided onComplete {
                 case Success(d) => 
-                  d.complement().iterateOverAll(i => {
-                    val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
-                    val rnd = Round(getCRoundCount, Set(self), cfp)
-                    val msg = Configure(id, i, rnd)
-                    log.debug(s"${self} Configure INSTANCE: ${i} using ROUND: ${rnd}")
-                    context.become(proposerBehavior(config, instances + (i -> phase1A(msg, state, config))))
+                  d.complement().iterateOverAll(instance => {
+                    val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
+                    val rnd = Round(getCRoundCount, newCoordinators, cfp)
+                    val msg = Configure(id, instance, rnd)
+                    log.debug(s"${self} - ${id} Configure INSTANCE: ${instance} using ROUND: ${rnd}")
+                    context.become(proposerBehavior(config, instances + (instance -> phase1A(msg, state, config))))
                   })
                 case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}", ex.getMessage)
               }
@@ -210,16 +205,17 @@ trait Proposer extends ActorLogging {
         log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, until)
       }
 
-    case msg: AcceptedInstances =>
-      log.debug(s"${id} - ROUND: ${msg.rnd} - ${id} with CRND: ${crnd} receive ACCEPTED INTERVAL: ${msg.instances}")
-      if (isCoordinatorOf(msg.rnd)) {
-        //val rnd: Round = msg.rnd.inc
-        msg.instances.iterateOverAll( i => { 
-          val state = instances.getOrElse(i, Future.successful(ProposerMeta(None, None)))
-          context.become(proposerBehavior(config, instances + (i -> phase1A(Configure(id, i, crnd), state, config))))
-        })
+    case msg: UpdateRound =>
+      log.debug(s"${id} with CRND: ${crnd} PRND: ${prnd} and GRND: ${grnd} see instance: ${msg.instance} with greater round: ${msg.rnd}")
+      if (grnd < msg.rnd) {
+        grnd = grnd.copy(msg.rnd.count+1)
+        val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+        val msgConfig = Configure(id, msg.instance, grnd)
+        context.become(proposerBehavior(config, instances + (msg.instance -> phase1A(msgConfig, state, config))))
+        log.debug(s"UPDATE ROUND GRND: ${grnd} because is smaller than MSG.RND: ${msg.rnd}")
+      } else {
+        log.debug(s"NOT UPDATE ROUND GRND: ${grnd} because is greater than MSG.RND: ${msg.rnd}")
       }
-      //else forward to coordinator of msg.rnd
         
     case msg: Proposal =>
       log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
@@ -250,14 +246,14 @@ trait Proposer extends ActorLogging {
     // TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
       context.become(proposerBehavior(msg.config, instances))
-    //TODO MemberRemoved
 
     case msg: MakeProposal =>
-      log.debug(s"${id} receive ${msg} from ${sender} with PROPOSED COUNTER=${proposed}")
+      log.debug(s"${id} - PRND:${prnd} CRND: ${crnd} GRND: ${grnd} - receive ${msg} from ${sender} with PROPOSED COUNTER=${proposed}")
       // update the grnd
-      if(prnd.coordinator.nonEmpty) {
+      if (coordinators.nonEmpty) {
         var round = prnd
         if (grnd > prnd) {
+          log.debug(s"MAKEPROPOSAL - ${id} - PRND: ${prnd} is less than GRND: ${grnd}")
           round = grnd
         }
         if (isCFProposerOf(round)) {
@@ -323,9 +319,9 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
   // FIXME: This need to be Long?
   var proposed: Int = -1;
 
-  val quorumPerInstance = scala.collection.mutable.Map[Instance, scala.collection.mutable.Map[AgentId, Message]]()
+  var coordinators: Set[ActorRef] = Set()
 
-  var coordinators: Set[ActorRef] = Set.empty[ActorRef]
+  val quorumPerInstance = scala.collection.mutable.Map[Instance, scala.collection.mutable.Map[AgentId, Message]]()
 
   override def preStart(): Unit = {
     log.info("Proposer ID: {} UP on {}", id, self.path)

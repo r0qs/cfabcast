@@ -90,7 +90,7 @@ trait Learner extends ActorLogging {
         replies.getOrElseUpdate(instance, MSet())
         val vmap = learnedVMaps.get
         for ((p, v) <- vmap) {
-          if (!replies(instance).contains(p)) {
+          if (!replies(instance).contains(p) && config.proposers.contains(p)) {
             replies(instance) += p
             // Notify what was learned
             config.proposers(p) ! Learned(instance, v)
