@@ -138,6 +138,18 @@ trait Proposer extends ActorLogging {
   }
 */
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[ProposerMeta]])(implicit ec: ExecutionContext): Receive = {
+    case Broadcast(data) =>
+      //TODO: Use stash to store messages for further processing
+      // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
+      if(waitFor <= config.acceptors.size) {
+        log.debug("Receive proposal: {} from {}", data, sender)
+        // TODO: Clients must be associated with a proposer
+        // and servers with a learner (cluster client)
+        self ! MakeProposal(Value(Some(data)))
+      }
+      else
+        log.debug("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
+
     case GetState =>
       //TODO: async here!
       instances.foreach({case (instance, state) => 
@@ -179,7 +191,8 @@ trait Proposer extends ActorLogging {
           log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
           // Run configure phase (1)
           // TODO: ask for all learners and reduce the result  
-          implicit val timeout = Timeout(1 seconds)
+          implicit val timeout = Timeout(2 seconds)
+          // TODO Retry when fail
           val decided: Future[IRange] = ask(config.learners.values.head, WhatULearn).mapTo[IRange]
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
           // TODO: async everywhere!!!!
@@ -309,6 +322,9 @@ trait Proposer extends ActorLogging {
 }
 
 class ProposerActor(val id: AgentId) extends Actor with Proposer {
+  val settings = Settings(context.system)
+  val waitFor = settings.MinNrOfAgentsOfRole("acceptor")
+
   // Greatest known round
   var grnd: Round = Round()
   // Proposer current round

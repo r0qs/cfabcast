@@ -32,14 +32,14 @@ class Node extends Actor with ActorLogging {
   val nodeId = settings.NodeId
   val waitFor = settings.MinNrOfAgentsOfRole("acceptor")
   val nodeAgents = settings.NrOfAgentsOfRoleOnNode
-  log.info(s"NODE AGENTS: ${nodeAgents}")
   val proposersIds = settings.ProposerIdsByName
   val learnersIds = settings.LearnerIdsByName
   val acceptorsIds = settings.AcceptorIdsByName
   val protocolRoles = settings.ProtocolRoles
+  
+  log.info(s"NODE AGENTS: ${nodeAgents}")
 
   // Agents of the protocol
-  // FIXME declare key type in configuration file
   var proposers = MMap.empty[AgentId, ActorRef]
   var acceptors = MMap.empty[AgentId, ActorRef]
   var learners  = MMap.empty[AgentId, ActorRef]
@@ -106,7 +106,40 @@ class Node extends Actor with ActorLogging {
       context.actorSelection(memberPath(member.address)) ! Identify(member)
     }
   }
- 
+
+  def getRandomAgent(from: Vector[ActorRef]): Option[ActorRef] = 
+    if (from.isEmpty) None
+    else Some(from(Random.nextInt(from.size)))
+
+  // scala Set to Java Set Converters
+  def scalaToJavaSet[T](scalaSet: Set[T]): java.util.Set[T] = {
+    val javaSet = new java.util.HashSet[T]()
+    scalaSet.foreach(entry => javaSet.add(entry))
+    javaSet
+  }
+
+  // FIXME: Only do this step if all configured nodes are UP. How know that?
+  def getBroadcastGroup(): java.util.Set[ActorRef] = scalaToJavaSet[ActorRef](members.keys.toSet)
+
+  //TODO Use ClusterSingleton to manager ClusterClient requests and a Router to select agents
+  def registerClient(client: ActorRef): Unit = {
+    clients += client
+    val group = getBroadcastGroup
+    val proposer = getRandomAgent(proposers.values.toVector)
+    log.info(s"Registering client: ${client} with proposer: ${proposer}")
+    if (proposer != None)
+      client ! ClientRegistered(proposer.get, group)
+    else
+      log.error(s"${self} does not have a proposer: ${proposer}!")
+  }
+
+  def registerServer(server: ActorRef): Unit = {
+    servers += server
+    val learner = getRandomAgent(learners.values.toVector)
+    log.info(s"Registering server: ${server} with learner: ${learner}")
+//    learner ! ReplyLearnedValuesTo(server)
+  }
+
   override val supervisorStrategy = OneForOneStrategy(loggingEnabled = false) {
     case e =>
       log.error("EXCEPTION: {} ---- MESSAGE: {} ---- PrintStackTrace: {}", e, e.getMessage, e.printStackTrace)
@@ -133,25 +166,20 @@ class Node extends Actor with ActorLogging {
             ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
         case _ => 
-          if(proposers.nonEmpty)
-            self ! Broadcast(serializer.toBinary(cmd))
-          else
+          if(proposers.nonEmpty) {
+            val data = serializer.toBinary(cmd)
+            proposers.values.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
+          } else {
             log.info(s"Ops!! This node [${nodeId}] don't have a proposer to handle commands.")
+          }
       }
+
+    //TODO identify when a client or a server disconnect and remove them.
+    case RegisterClient => registerClient(sender)
+
+    case RegisterServer => registerServer(sender)
 
     case TakeIntervals(interval) => log.info(s"Learner ${sender} learned in instances: ${interval}") 
-
-    case Broadcast(data) =>
-      //TODO: Use stash to store messages for further processing
-      // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
-      if(waitFor <= config.acceptors.size) {
-        log.debug("Receive proposal: {} from {} and sending to {}", serializer.fromBinary(data),sender, proposers)
-        // TODO: Clients must be associated with a proposer
-        // and servers with a learner (cluster client)
-        proposers.values.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
-      }
-      else
-        log.debug("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
 
     case DeliveredValue(value) =>
       val v = value.get
@@ -164,7 +192,7 @@ class Node extends Actor with ActorLogging {
           v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
-//              log.debug("Value in response: {}", serializer.fromBinary(response))
+              log.debug("Value in response: {}", serializer.fromBinary(response))
               server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
@@ -182,17 +210,7 @@ class Node extends Actor with ActorLogging {
         log.info("Adding a Protocol agent node on: {}", member.address)
         context watch ref
         ref ! GiveMeAgents
-      }
-      if (member.hasRole("server")) {
-        log.info("Adding a Server Listener on: {}", member.address)
-        servers += ref
-      }
-      if (member.hasRole("client")) {
-        log.info("Adding a Client Listener on: {}", member.address)
-        clients += ref
-        // DEBUG
-        servers += ref
-      }
+      } 
 
     case ActorIdentity(member: Member, None) =>
       log.warning("Unable to find any actor on node: {}", member.address)
@@ -219,9 +237,7 @@ class Node extends Actor with ActorLogging {
     case MemberRemoved(member, previousStatus) =>
       log.info("Member {} removed: {} after {}", self, member.address, previousStatus)
       nodes -= member.address
-      //TODO identify when a client or a server disconnect and remove them.
 
-    //FIXME: All proposers are collision fast
     case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers.values.toSet)
 
     // TODO: Improve this
