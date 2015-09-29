@@ -5,4 +5,4 @@
 # Over proxy, uncomment this line with your proxy settings
 #export http_proxy="http://proxy.ufu.br:3128"
 
-wget -c -O - http://repo.scala-sbt.org/scalasbt/sbt-native-packages/org/scala-sbt/sbt/0.13.0/sbt.tgz | tar -xvzf -
+wget -c -O - https://dl.bintray.com/sbt/native-packages/sbt/0.13.9/sbt-0.13.9.tgz | tar -xvzf -
