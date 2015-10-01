@@ -13,8 +13,8 @@ sealed class CFABCastMessage extends Serializable
 case class Broadcast(@BeanProperty val data: Array[Byte]) extends CFABCastMessage
 case class Delivery(@BeanProperty val data: Array[Byte])  extends CFABCastMessage
 
-case object RegisterClient  extends CFABCastMessage { def instance = this }
-case object RegisterServer  extends CFABCastMessage { def instance = this }
+case class RegisterClient(client: ActorRef) extends CFABCastMessage
+case class RegisterServer(server: ActorRef) extends CFABCastMessage
 
 case class ClientRegistered(
   @BeanProperty val proposer: ActorRef, 

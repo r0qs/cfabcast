@@ -175,9 +175,9 @@ class Node extends Actor with ActorLogging {
       }
 
     //TODO identify when a client or a server disconnect and remove them.
-    case RegisterClient => registerClient(sender)
+    case msg: RegisterClient => registerClient(msg.client)
 
-    case RegisterServer => registerServer(sender)
+    case msg: RegisterServer => registerServer(msg.server)
 
     case TakeIntervals(interval) => log.info(s"Learner ${sender} learned in instances: ${interval}") 
 
