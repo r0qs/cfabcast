@@ -192,7 +192,7 @@ class Node extends Actor with ActorLogging {
           v match {
             case values: Value =>
               val response = values.value.getOrElse(Array[Byte]())
-              log.debug("Value in response: {}", serializer.fromBinary(response))
+              //log.debug("Value in response: {}", serializer.fromBinary(response))
               server ! Delivery(response) 
             case _ => //do nothing if the value is Nil
             }
