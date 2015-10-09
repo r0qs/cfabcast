@@ -1,0 +1,191 @@
+include "application"
+
+akka {
+  loggers = ["akka.event.slf4j.Slf4jLogger"]
+  logger-startup-timeout = 10s
+  # To turn off logging
+  #stdout-loglevel = "OFF"
+  #loglevel = "OFF"
+  # Options: OFF, ERROR, WARNING, INFO, DEBUG
+  loglevel = "INFO"
+  log-dead-letters = 10
+  log-dead-letters-during-shutdown = off
+  log-config-on-start = off
+
+#    debug {
+#      receive = on
+#      autoreceive = on
+#      lifecycle = on
+#      event-stream = on
+#    }
+  }
+
+  remote {
+#    log-sent-messages = on
+#    log-received-messages = on
+#    log-remote-lifecycle-events = on
+    # Hostname and port are set in code based on reference.conf
+#    netty.tcp {
+#      hostname = "0.0.0.0"
+#      port = 0
+#    }
+  }
+
+  cluster {
+    # Set seed node in a enviromment variable
+    seed-nodes = [
+      "akka.tcp://CFABCastSystem@node42:2551",
+      "akka.tcp://CFABCastSystem@node43:2552",
+      "akka.tcp://CFABCastSystem@node44:2553"
+    ]
+
+    auto-down-unreachable-after = 20s
+
+    # Settings for the Phi accrual failure detector (http://ddg.jaist.ac.jp/pub/HDY+04.pdf
+    # [Hayashibara et al]) used by the cluster subsystem to detect unreachable
+    # members.
+    # The default PhiAccrualFailureDetector will trigger if there are no heartbeats within
+    # the duration heartbeat-interval + acceptable-heartbeat-pause + threshold_adjustment,
+    # i.e. around 5.5 seconds with default settings.
+    failure-detector {
+ 
+      # FQCN of the failure detector implementation.
+      # It must implement akka.remote.FailureDetector and have
+      # a public constructor with a com.typesafe.config.Config and
+      # akka.actor.EventStream parameter.
+      implementation-class = "akka.remote.PhiAccrualFailureDetector"
+ 
+      # How often keep-alive heartbeat messages should be sent to each connection.
+      # default: 1 s
+      heartbeat-interval = 5 s
+ 
+      # Defines the failure detector threshold.
+      # A low threshold is prone to generate many wrong suspicions but ensures
+      # a quick detection in the event of a real crash. Conversely, a high
+      # threshold generates fewer mistakes but needs more time to detect
+      # actual crashes.
+      # default : 8.0
+      threshold = 12.0
+ 
+      # Number of the samples of inter-heartbeat arrival times to adaptively
+      # calculate the failure timeout for connections.
+      # default: 1000
+      max-sample-size = 1000
+ 
+      # Minimum standard deviation to use for the normal distribution in
+      # AccrualFailureDetector. Too low standard deviation might result in
+      # too much sensitivity for sudden, but normal, deviations in heartbeat
+      # inter arrival times.
+      # default: 100 ms
+      min-std-deviation = 100 ms
+ 
+      # Number of potentially lost/delayed heartbeats that will be
+      # accepted before considering it to be an anomaly.
+      # This margin is important to be able to survive sudden, occasional,
+      # pauses in heartbeat arrivals, due to for example garbage collect or
+      # network drop.
+      # default: 3 s 
+      acceptable-heartbeat-pause = 60 s
+ 
+      # Number of member nodes that each member will send heartbeat messages to,
+      # i.e. each node will be monitored by this number of other nodes.
+      # default: 5
+      monitored-by-nr-of-members = 5
+      
+      # After the heartbeat request has been sent the first failure detection
+      # will start after this period, even though no heartbeat message has
+      # been received.
+      # default: 1 s
+      expected-response-after = 20 s
+    }
+  }
+}
+
+cfabcast {
+  # Minimum required number of nodes before start computation
+  min-nr-of-nodes = 1
+  
+  node-id = ""
+
+  role {
+    # Minimum required number of agents of a certain role before start the protocol
+    # E.g. to require 2 agents with role 'cfproposer' and 3 agents with role 'acceptor':
+    #   cfproposer.min-nr-of-agents = 2
+    #   acceptor.min-nr-of-agents = 3
+    #
+    #<role-name>.min-nr-of-agents = 1
+    
+    cfproposer.min-nr-of-agents = 3 
+
+    # Determines the Quorum size
+    acceptor.min-nr-of-agents = 3
+  }
+
+  nodes {
+    # Per node configuration  
+    node42 {
+      hostname = "node42"
+      port = 2551
+      roles = [proposer, acceptor, learner]
+      # Number of agents that play a certain role in this node.
+      # E.g. to specify a node that play the role of 1 proposer and 1 learner:
+      #  proposer.nr-of-agents  = 1
+      #  acceptor.nr-of-agents  = 0
+      #  learner.nr-of-agents   = 1
+      proposer {
+        nr-of-agents  = 1
+        proposer1.id = "p1"
+      }
+
+      learner {
+        nr-of-agents   = 1
+        learner1.id = "l1"
+      }
+
+      acceptor {
+        nr-of-agents  = 1
+        acceptor1.id = "a1"
+      }
+    }
+  
+    node43 {
+      hostname = "node43"
+      port = 2552
+      roles = [proposer, acceptor, learner]
+      proposer {
+        nr-of-agents  = 1
+        proposer2.id = "p2"
+      }
+
+      learner {
+        nr-of-agents   = 1
+        learner2.id = "l2"
+      }
+
+      acceptor {
+        nr-of-agents  = 1
+        acceptor2.id = "a2"
+      }
+    }
+  
+    node44 {
+      hostname = "node44"
+      port = 2553
+      roles = [proposer, acceptor, learner]
+      proposer {
+        nr-of-agents  = 1
+        proposer3.id = "p3"
+      }
+
+      learner {
+        nr-of-agents   = 1
+        learner3.id = "l3"
+      }
+
+      acceptor {
+        nr-of-agents  = 1
+        acceptor3.id = "a3"
+      }
+    }
+  }
+}
