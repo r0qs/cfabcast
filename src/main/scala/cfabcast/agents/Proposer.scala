@@ -137,6 +137,10 @@ trait Proposer extends ActorLogging {
     future
   }
 */
+  def askRetry(delay: FiniteDuration, replyTo: ActorRef, message: Message)(implicit ec: ExecutionContext): Unit = { 
+    context.system.scheduler.scheduleOnce(delay, replyTo, message)
+  }
+
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[ProposerMeta]])(implicit ec: ExecutionContext): Receive = {
     case Broadcast(data) =>
       //TODO: Use stash to store messages for further processing
@@ -181,13 +185,13 @@ trait Proposer extends ActorLogging {
         grnd = msg.crnd
       }
 
-    case NewLeader(newCoordinators: Set[ActorRef], until: Int) =>
+    case msg: NewLeader =>
       //TODO: Update the prnd with the new coordinator
       //prnd = prnd.copy(coordinator = rnd.coordinator)
-      coordinators = newCoordinators
-      if(until <= config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", until)
-        if (newCoordinators contains self) {
+      coordinators = msg.coordinators
+      if(msg.until <= config.acceptors.size) {
+        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", msg.until)
+        if (msg.coordinators contains self) {
           log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
           // Run configure phase (1)
           // TODO: ask for all learners and reduce the result  
@@ -202,20 +206,24 @@ trait Proposer extends ActorLogging {
                 case Success(d) => 
                   d.complement().iterateOverAll(instance => {
                     val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
-                    val rnd = Round(getCRoundCount, newCoordinators, cfp)
-                    val msg = Configure(id, instance, rnd)
+                    val rnd = Round(getCRoundCount, msg.coordinators, cfp)
+                    val configMsg = Configure(id, instance, rnd)
                     log.debug(s"${self} - ${id} Configure INSTANCE: ${instance} using ROUND: ${rnd}")
-                    context.become(proposerBehavior(config, instances + (instance -> phase1A(msg, state, config))))
+                    context.become(proposerBehavior(config, instances + (instance -> phase1A(configMsg, state, config))))
                   })
-                case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}", ex.getMessage)
+                case Failure(ex) => 
+                  log.error("{} Failed when trying to get the decided values. Because of a {} ... Trying again...", self, ex.getMessage)
+                  askRetry(2 seconds, self, msg)
               }
-            case Failure(ex) => log.error(s"Not get CFP set. Because of a {}", ex.getMessage)
+            case Failure(ex) => 
+              log.error(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
+              askRetry(2 seconds, self, msg)
           }
         } else {
-          log.debug("Iam NOT the LEADER! My id is {} - HASHCODE: {}", id, self.hashCode)
+          log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
         }
       } else {
-        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, until)
+        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, msg.until)
       }
 
     case msg: UpdateRound =>
@@ -294,12 +302,19 @@ trait Proposer extends ActorLogging {
                 val instance = d.next
                 self ! TryPropose(instance, round, msg.value)
               }
-            case Failure(ex) => log.error("Fail when try to get decided set. Because of a {}", ex.getMessage)
+            case Failure(ex) => 
+              log.error("{} Failed when trying to get the decided values. Because of a {}", self, ex.getMessage)
+              askRetry(2 seconds, self, msg)
           }
         } else {
           val cfps = round.cfproposers
           log.debug("{} - Receive a proposal: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
-          cfps.toVector(Random.nextInt(cfps.size)) forward msg
+          if(cfps.nonEmpty) {
+            cfps.toVector(Random.nextInt(cfps.size)) forward msg
+          } else {
+            log.error("{} - EMPTY CFP for round: {} when receive: {}", self, round, msg)
+            askRetry(2 seconds, self, msg)
+          }
         }
       } else {
         //TODO: Rerun leader election!
