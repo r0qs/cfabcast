@@ -8,3 +8,7 @@ sbt/
 project/project/
 project/target/
 *.jar
+libmcad_test_scripts/logsmcast/
+libmcad_test_scripts/logs/
+logs/
+
