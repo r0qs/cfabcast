@@ -1,8 +1,10 @@
 *~
 .*.swp
 .*.swo
+*.pyc
 .history
 target/
 sbt/
 project/project/
 project/target/
+*.jar

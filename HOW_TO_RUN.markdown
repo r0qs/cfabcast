@@ -11,7 +11,9 @@ $ ./sbt_install.sh
 Please look in the official [documentation of sbt](http://www.scala-sbt.org/release/docs/Getting-Started/Running.html) for more commands.
 
 ```
-$ ./sbt/bin/sbt 'run-main Main node1'
-$ ./sbt/bin/sbt 'run-main Main node2'
-$ ./sbt/bin/sbt 'run-main Main node3'
+Running with SBT:
+sbt -Dconfig.file=src/main/resources/cfabcast.conf 'run-main Main node41'
+
+Running with uber jar:
+java -cp target/scala-2.11/CFABCast-assembly-0.1-SNAPSHOT.jar -Dconfig.file=src/main/resources/cfabcast.conf Main node1
 ```
