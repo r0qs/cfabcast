@@ -4,7 +4,7 @@ organization := "cfabcast"
 
 version := "0.1-SNAPSHOT"
 
-scalaVersion := "2.11.6"
+scalaVersion := "2.11.7"
 
 scalacOptions ++= Seq(
   "-deprecation",
@@ -21,18 +21,18 @@ scalacOptions ++= Seq(
   "-Ywarn-value-discard",
   "-Ywarn-unused-import",
   "-language:postfixOps",
-  "-target:jvm-1.8"
+  "-target:jvm-1.7"
 )
 
 //production
-javaOptions in run ++= Seq("-Xms512m", "-Xmx2g", "-XX:+CMSClassUnloadingEnabled", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=3000")
+//javaOptions in run ++= Seq("-Xms3g", "-Xmx3g", "-XX:+CMSClassUnloadingEnabled", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=3000")
 
 //debug
-//javaOptions in run += "-Xms512M -Xmx1536M -Xss1M -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=256M -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:-HeapDumpOnOutOfMemoryError -XX:+UseG1GC -XX:MaxGCPauseMillis=3000"
+javaOptions in run ++= Seq("-Xms512M -Xmx1536M -Xss1M -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=256M -XX:+PrintGCDetails -XX:+PrintGCTimeStamps -XX:-HeapDumpOnOutOfMemoryError -XX:+UseG1GC -XX:MaxGCPauseMillis=3000")
 
 javacOptions ++= Seq(
-  "-source", "1.8",
-  "-target", "1.8",
+  "-source", "1.7",
+  "-target", "1.7",
   "-Xlint"
 )
 
@@ -43,12 +43,12 @@ resolvers ++= Seq(
 )
 
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-actor" % "2.3.12",
-  "com.typesafe.akka" %% "akka-testkit" % "2.3.12",
-  "com.typesafe.akka" %% "akka-cluster" % "2.3.12",
-  "com.typesafe.akka" %% "akka-contrib" % "2.3.12",
-  "com.typesafe.akka" %% "akka-persistence-experimental" % "2.3.12",
-  "com.typesafe.akka" %% "akka-slf4j" % "2.3.12",
+  "com.typesafe.akka" %% "akka-actor" % "2.3.14",
+  "com.typesafe.akka" %% "akka-testkit" % "2.3.14",
+  "com.typesafe.akka" %% "akka-cluster" % "2.3.14",
+  "com.typesafe.akka" %% "akka-contrib" % "2.3.14",
+  "com.typesafe.akka" %% "akka-persistence-experimental" % "2.3.14",
+  "com.typesafe.akka" %% "akka-slf4j" % "2.3.14",
   "org.scala-lang.modules" %%	"scala-async" % "0.9.5", 
   "ch.qos.logback" % "logback-classic" % "1.1.3",
   "org.scalatest" %% "scalatest" % "2.2.1" % "test"
