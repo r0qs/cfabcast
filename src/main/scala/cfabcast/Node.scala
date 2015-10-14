@@ -61,10 +61,10 @@ class Node extends Actor with ActorLogging {
   for ((name, id) <- acceptorsIds) {
     acceptors(id) = context.actorOf(AcceptorActor.props(id), name=s"$name") 
   }
-
-  log.debug(s"PROPOSERS: ${proposers}")
-  log.debug(s"ACCEPTORS: ${acceptors}")
-  log.debug(s"LEARNERS: ${learners}")
+  
+  log.info(s"PROPOSERS: ${proposers}")
+  log.info(s"ACCEPTORS: ${acceptors}")
+  log.info(s"LEARNERS: ${learners}")
 
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
@@ -80,11 +80,12 @@ class Node extends Actor with ActorLogging {
 
   val myConfig = ClusterConfiguration(proposers, acceptors, learners)
 
+  log.info(s"Registering Recepcionist on node: $nodeId")
+  ClusterReceptionistExtension(context.system).registerService(self)
+
   // Subscribe to cluster changes, MemberUp
   override def preStart(): Unit = {
     cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
-    log.info(s"Registering Recepcionist on node: $nodeId")
-    ClusterReceptionistExtension(context.system).registerService(self)
   }
 
   // Unsubscribe when stop to re-subscripe when restart
@@ -153,7 +154,7 @@ class Node extends Actor with ActorLogging {
 
     // FIXME: Remove this awful test
     case Command(cmd: String) =>
-      log.info("Received COMMAND {} ", cmd)
+      log.debug("Received COMMAND {} ", cmd)
       cmd match {
         case "pstate"   => proposers.values.foreach(_ ! GetState) 
         case "astate"   => acceptors.values.foreach(_ ! GetState) 
@@ -181,21 +182,23 @@ class Node extends Actor with ActorLogging {
 
     case TakeIntervals(interval) => log.info(s"Learner ${sender} learned in instances: ${interval}") 
 
-    case DeliveredValue(value) =>
-      val v = value.get
-      if(v == None)
-        log.debug("Nothing learned yet! Value is BOTTOM! = {} ", v)
+    case msg: DeliveredVMap =>
+      val vmap = msg.vmap.get
+      if(vmap == None)
+        log.debug("Nothing learned yet! Value is BOTTOM! = {} ", vmap)
       else {
-        log.debug("Received learned from {} with Value = {} ", sender, v)
+        log.debug("Received learned vmap from {} with Values = {} ", sender, vmap)
         servers.foreach( server => { 
           log.debug("Sending response to server: {} ", server)
-          v match {
-            case values: Value =>
-              val response = values.value.getOrElse(Array[Byte]())
-              //log.debug("Value in response: {}", serializer.fromBinary(response))
-              server ! Delivery(response) 
-            case _ => //do nothing if the value is Nil
+          vmap.foreach({case (pid, value) =>
+            value match {
+              case values: Value =>
+                val response = values.value.getOrElse(Array[Byte]())
+                //log.debug("Value in response: {}", serializer.fromBinary(response))
+                server ! Delivery(response) 
+              case _ => //do nothing if the value is Nil
             }
+          })
         })
       }
 
@@ -207,8 +210,7 @@ class Node extends Actor with ActorLogging {
     // Return the ActorRef of a member node
     case ActorIdentity(member: Member, Some(ref)) =>
       if (member.hasRole("cfabcast")) {
-        log.info("Adding a Protocol agent node on: {}", member.address)
-        context watch ref
+        log.info("{} : Requesting protocol agents to {}", self, ref)
         ref ! GiveMeAgents
       } 
 
@@ -228,21 +230,22 @@ class Node extends Actor with ActorLogging {
       if (actualConfig.acceptors.size >= waitFor) {
         leaderOracle ! MemberChange(actualConfig, proposers.values.toSet, waitFor)
       }
+      context watch ref
       context.become(configuration(actualConfig))
 
     case UnreachableMember(member) =>
-      log.info("Member {} detected as unreachable: {}", self, member)
+      log.warning("Member {} detected as unreachable: {}", self, member)
       //TODO notify the leaderOracle and adopt new police
 
     case MemberRemoved(member, previousStatus) =>
-      log.info("Member {} removed: {} after {}", self, member.address, previousStatus)
+      log.warning("Member {} removed: {} after {}", self, member.address, previousStatus)
       nodes -= member.address
 
     case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers.values.toSet)
 
     // TODO: Improve this
     case Terminated(ref) =>
-      log.info("Actor {} terminated, removing config: {}", ref, members(ref))
+      log.warning("Actor {} terminated, removing config: {}", ref, members(ref))
       val newConfig = config - members(ref)
       notifyAll(newConfig)
       context.become(configuration(newConfig))

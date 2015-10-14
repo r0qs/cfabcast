@@ -31,4 +31,5 @@ case class AcceptorState(events: Map[Instance, AcceptorMeta] = Map()) {
 
 case class LearnerMeta(
   learned: Option[VMap[Values]]
+  //TODO put domain of proposers here!?
 )extends Serializable

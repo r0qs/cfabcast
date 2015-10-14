@@ -164,16 +164,24 @@ trait Proposer extends ActorLogging {
  
     case msg: Learned =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
-      val actorSender = sender
-      state onSuccess {
-          case s => {//FIXME 
-                    if (s.pval.get(id) != msg.learnedValue) {
-                      //TODO proposed value not differ from learned in this instance
-                      log.error(s"INSTANCE: ${msg.instance} - ${self} - Proposed value: ${s.pval} was NOT LEARNED: ${msg.learnedValue} send by ${actorSender}")
-                    }
-          }
+      val learner = sender
+      val vmap = msg.vmap.get
+      if (vmap == None) {
+        log.warning("Learned NOTHING on: {} for instance: {}", learner, msg.instance)
+      } else {
+        state onSuccess {
+          case s => 
+            //TODO verify if proposed value is equals to decided value
+            if (vmap.values.toSet.contains(s.pval.get(id))) {
+              learnedInstances = learnedInstances.insert(msg.instance) 
+              log.info("Proposer: {} learned: {} in instance: {} with vmap: {}", id, learnedInstances, msg.instance, vmap)
+            } else {
+              log.error(s"INSTANCE: ${msg.instance} - ${id} - Proposed value: ${s.pval} was NOT LEARNED: ${msg.vmap} send by ${learner}")
+              context.stop(self)
+            }
+        }
       }
-        
+
     case msg: UpdatePRound => 
       log.info(s"${self} - My prnd: ${prnd} crnd: ${crnd} -- Updating to prnd ${msg.prnd} crnd: ${msg.crnd}")
       if(prnd < msg.prnd) {
@@ -194,30 +202,21 @@ trait Proposer extends ActorLogging {
         if (msg.coordinators contains self) {
           log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
           // Run configure phase (1)
-          // TODO: ask for all learners and reduce the result  
-          implicit val timeout = Timeout(2 seconds)
-          // TODO Retry when fail
-          val decided: Future[IRange] = ask(config.learners.values.head, WhatULearn).mapTo[IRange]
+          implicit val timeout = Timeout(5 seconds)
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
-          // TODO: async everywhere!!!!
           cfpSet onComplete {
             case Success(cfp) => 
-              decided onComplete {
-                case Success(d) => 
-                  d.complement().iterateOverAll(instance => {
-                    val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
-                    val rnd = Round(getCRoundCount, msg.coordinators, cfp)
-                    val configMsg = Configure(id, instance, rnd)
-                    log.debug(s"${self} - ${id} Configure INSTANCE: ${instance} using ROUND: ${rnd}")
-                    context.become(proposerBehavior(config, instances + (instance -> phase1A(configMsg, state, config))))
-                  })
-                case Failure(ex) => 
-                  log.error("{} Failed when trying to get the decided values. Because of a {} ... Trying again...", self, ex.getMessage)
-                  askRetry(2 seconds, self, msg)
-              }
+              learnedInstances.complement().iterateOverAll(instance => {
+                val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
+                val rnd = Round(getCRoundCount, msg.coordinators, cfp)
+                val configMsg = Configure(id, instance, rnd)
+                log.debug(s"${self} - ${id} Configure INSTANCE: ${instance} using ROUND: ${rnd}")
+                context.become(proposerBehavior(config, instances + (instance -> phase1A(configMsg, state, config))))
+              })
+
             case Failure(ex) => 
-              log.error(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
-              askRetry(2 seconds, self, msg)
+              log.warning(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
+              askRetry(5 seconds, self, msg)
           }
         } else {
           log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
@@ -280,31 +279,21 @@ trait Proposer extends ActorLogging {
         if (isCFProposerOf(round)) {
           proposed += 1
           val p = proposed
-          implicit val timeout = Timeout(1 seconds)
-          // Synchronize here ?
-          val decided: Future[IRange] = ask(config.learners.values.head, WhatULearn).mapTo[IRange]
-          //val d = Await.result(decided, timeout.duration).asInstanceOf[IRange]
-          decided onComplete {
-            case Success(d) =>
-              // If not proposed and not learned nothing yet in this instance
-              log.debug(s"${self} -> DECIDED= ${d} , PROPOSED= ${p}, trying value: ${msg.value}")
-              if (!d.contains(p)) {
-                self ! TryPropose(p, round, msg.value)
-              } else {
-                // Not repropose Nil on the last valid instance, use it to a new value
-                val nilReproposalInstances = d.complement().dropLast
-                nilReproposalInstances.iterateOverAll(i => {
-                  log.debug(s"INSTANCE: ${i} - MAKEPROPOSAL: ${id} sending NIL to LEARNERS")
-                  self ! TryPropose(i, round, Nil)
-                  //FIXME: Maybe send this direct to learners:w
-                  //exec phase2A
-                })
-                val instance = d.next
-                self ! TryPropose(instance, round, msg.value)
-              }
-            case Failure(ex) => 
-              log.error("{} Failed when trying to get the decided values. Because of a {}", self, ex.getMessage)
-              askRetry(2 seconds, self, msg)
+          // If not proposed and not learned nothing yet in this instance
+          log.debug(s"${self} -> DECIDED= ${learnedInstances} , PROPOSED= ${p}, trying value: ${msg.value}")
+          if (!learnedInstances.contains(p)) {
+            self ! TryPropose(p, round, msg.value)
+          } else {
+            // Not repropose Nil on the last valid instance, use it to a new value
+            val nilReproposalInstances = learnedInstances.complement().dropLast
+            nilReproposalInstances.iterateOverAll(i => {
+              log.debug(s"INSTANCE: ${i} - MAKEPROPOSAL: ${id} sending NIL to LEARNERS")
+              self ! TryPropose(i, round, Nil)
+              //FIXME: Maybe send this direct to learners:w
+              //exec phase2A
+            })
+            val instance = learnedInstances.next
+            self ! TryPropose(instance, round, msg.value)
           }
         } else {
           val cfps = round.cfproposers
@@ -312,8 +301,8 @@ trait Proposer extends ActorLogging {
           if(cfps.nonEmpty) {
             cfps.toVector(Random.nextInt(cfps.size)) forward msg
           } else {
-            log.error("{} - EMPTY CFP for round: {} when receive: {}", self, round, msg)
-            askRetry(2 seconds, self, msg)
+            log.warning("{} - EMPTY CFP for round: {} when receive: {}", self, round, msg)
+            askRetry(5 seconds, self, msg)
           }
         }
       } else {
@@ -349,6 +338,8 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
  
   // FIXME: This need to be Long?
   var proposed: Int = -1;
+  
+  var learnedInstances: IRange = IRange() 
 
   var coordinators: Set[ActorRef] = Set()
 

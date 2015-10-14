@@ -74,6 +74,9 @@ extends LinkedHashMap[AgentId, T]
   }
 
   def areCompatible(that: VMap[T]): Boolean = if(this.isEmpty || that.isEmpty) true else (this prefix that).nonEmpty
+
+  def isComplete(actualDomain: Set[AgentId]): Boolean = (this.domain == actualDomain)
+
 }
 
 object VMap {
@@ -100,7 +103,6 @@ object VMap {
         def apply(from: VMap[_]) = newBuilder[T]
         def apply() = newBuilder[T]
       }
-
 
   def glb[T](s: List[VMap[T]]): VMap[T] = s.reduce((a, b) => a prefix b)
 

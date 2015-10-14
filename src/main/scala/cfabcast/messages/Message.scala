@@ -46,13 +46,10 @@ case class TryPropose(instance: Int, rnd: Round, value: Values) extends Message
 
 case object GetCFPs extends Message
 
-case class Learned(instance: Int, learnedValue: Values) extends Message
-case class DeliveredValue(value: Option[Values]) extends Message
-case class InstanceLearned(instance: Int, learnedVMaps: Option[VMap[Values]]) extends Message
+case class Learned(instance: Instance, vmap: Option[VMap[Values]]) extends Message
+case class DeliveredVMap(vmap: Option[VMap[Values]]) extends Message
 
-case object WhatULearn extends Message
 case object GetState extends Message
-
 case object GetIntervals extends Message
 case class TakeIntervals(interval: IRange) extends Message
 case class UpdateRound(instance: Instance, rnd: Round) extends Message
@@ -60,6 +57,7 @@ case class UpdateRound(instance: Instance, rnd: Round) extends Message
 case class UpdatePRound(prnd: Round, crnd: Round) extends Message
 
 case class ProposedIn(instance: Instance, value: Values) extends Message
+case object Done extends Message
 
 /*
  * Cluster Messages

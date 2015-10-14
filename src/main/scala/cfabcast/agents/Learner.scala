@@ -4,7 +4,7 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 
-import scala.concurrent.{ Future, Promise }
+import scala.concurrent.{Future, Promise}
 import scala.concurrent.ExecutionContext
 import scala.util.{Success, Failure}
 import scala.async.Async.{async, await}
@@ -14,7 +14,7 @@ import akka.actor._
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def learn(instance: Int, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = async {
+  def learn(instance: Instance, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = async {
     val oldState = await(state)
     // TODO: verify learner round!?
     // FIXME: It's better pass quorum and pSet to learn function?
@@ -30,12 +30,29 @@ trait Learner extends ActorLogging {
       val w: VMap[Values] = VMap.glb(Q2bVals) ++ value
       log.debug(s"INSTANCE: ${instance} - LEARN - ${id} - GLB of ${Q2bVals} + ${value} = ${w}")
       // TODO: Speculative execution
+      // TODO: isCompatible
       val Slub: List[VMap[Values]] = List(oldState.learned.get, w)
       log.debug(s"INSTANCE: ${instance} - LEARN - ${id} - Slub: ${Slub}")
       val lubVals: VMap[Values] = VMap.lub(Slub)
       val newState = oldState.copy(learned = Some(lubVals))
-      log.debug(s"INSTANCE: ${instance} - LEARNER: ${id} - LEARNED: ${newState.learned}")
-      self ! InstanceLearned(instance, newState.learned)
+      log.debug(s"INSTANCE: ${instance} - LEARNER: ${id} - LEARNED: ${newState.learned} OLD: ${oldState.learned}")
+      //FIXME Find a better way to verify this!
+      if (newState.learned.get.size > oldState.learned.get.size) {
+        // The vmap was extented, notify the new values decided
+        // Deliver a complete vmap
+        log.debug("Extending VMAP... domain:{} newState.domain: {}", domain, newState.learned.get.domain)
+        if (newState.learned.get.isComplete(domain)) {
+          context.actorSelection("../proposer*") ! Learned(instance, newState.learned)
+          context.parent ! DeliveredVMap(newState.learned)
+          try {
+            instancesLearned = instancesLearned.insert(instance)
+          } catch {
+            case e: ElementAlreadyExistsException => 
+              log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
+          }
+        }
+        //TODO else pre-learned
+      }
       newState
     } else { 
       log.debug(s"INSTANCE: ${instance} - MSG2B - ${id} Quorum requirements not satisfied: ${quorum.size}")
@@ -71,9 +88,6 @@ trait Learner extends ActorLogging {
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[Values]()))))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
 
-    case WhatULearn =>
-      sender ! instancesLearned
-   
     case GetIntervals =>
       sender ! TakeIntervals(instancesLearned)
 
@@ -84,36 +98,19 @@ trait Learner extends ActorLogging {
         }
       })
 
-    //FIXME: notify all values learned, one time only
-    case InstanceLearned(instance, learnedVMaps) =>
-      try {
-        replies.getOrElseUpdate(instance, MSet())
-        val vmap = learnedVMaps.get
-        for ((p, v) <- vmap) {
-          if (!replies(instance).contains(p) && config.proposers.contains(p)) {
-            replies(instance) += p
-            // Notify what was learned
-            config.proposers(p) ! Learned(instance, v)
-            context.parent ! DeliveredValue(Some(v))
-          }
-        }
-        instancesLearned = instancesLearned.insert(instance)
-        log.info("ID: {} - {} LEARNED: {}", id, self, instancesLearned)
-      } catch {
-        case e: ElementAlreadyExistsException => 
-          log.debug(s"Instance ${instance} already learned by ${id}, discarding response with values ${learnedVMaps}")
-      }
-
     case msg: UpdateConfig =>
+      val keys = msg.config.proposers.keySet
+      // Convert to mutable set
+      domain = scala.collection.mutable.Set(keys.toArray:_*)
       context.become(learnerBehavior(msg.config, instances))
   }
 }
 
 class LearnerActor(val id: AgentId) extends Actor with Learner {
+  var domain = scala.collection.mutable.Set.empty[AgentId]
   var instancesLearned: IRange = IRange()
   val quorumPerInstance = MMap[Instance, scala.collection.mutable.Map[AgentId, VMap[Values]]]()
   val pPerInstance = MMap[Instance, scala.collection.mutable.Set[AgentId]]()
-  val replies = MMap[Instance, scala.collection.mutable.Set[AgentId]]()
   
   override def preStart(): Unit = {
     log.info("Learner ID: {} UP on {}", id, self.path)
