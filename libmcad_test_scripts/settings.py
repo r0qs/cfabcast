@@ -7,7 +7,7 @@ from os.path import join, expanduser
 
 #SRC = join(expanduser('~'), "src/mestrado/scala/test")
 SRC = os.getcwd()
-log_file = join(SRC, "logs/output")
+log_file = join(SRC, "logs/stdout")
 
 def clean_log(logdir) :
     assert logdir.strip() != " "
@@ -89,8 +89,8 @@ def sshcmd(node, cmdstring, timeout=None) :
     return cmd.run(timeout)
     
 def sshcmdbg(node, cmdstring, env="") :
-    print "ssh " + node + " \'" + env + " " + cmdstring + "\' &"
-    os.system("ssh " + node + " \'" + env + " " + cmdstring + "\' &")
+    print "ssh " + node + " \'" + env + " " + cmdstring + " >> " + log_file + "\' &"
+    os.system("ssh " + node + " \'" + env + " " + cmdstring + " >> " + log_file + "\' &")
 
 # constants
 NODE = 0
@@ -115,17 +115,23 @@ def clientNodeIsEmpty(node, clientMap) :
             return False
     return True
 
+def getIpOf(hostname):
+    if hostname != "127.0.0.1":
+        return "192.168.3." + hostname.replace("node", "", 1)
+    else:
+        return "127.0.0.1"
+
 def createIdPerNodeList(nodes, firstId = 0):
     nodeList = []
     for id in range(firstId, len(nodes)) :
-        node = {"id": id, "host" : nodes[id]}
+        node = {"id": id, "host" : getIpOf(nodes[id])}
         nodeList.append(node)
     return nodeList
 
-def get_logdir(algorithm, numClients, numPermits, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk, baseDir="logsmcast"):
+def get_logdir(algorithm, numClients, numPermits, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk, baseDir="logs"):
     return get_logdir_load(algorithm, int(numClients) * int(numPermits), numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk, baseDir)
 
-def get_logdir_load(algorithm, load, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk, baseDir="logsmcast"):
+def get_logdir_load(algorithm, load, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk, baseDir="logs"):
     dirpath = SRC + "/" + baseDir + "/%s/%s_%s_clients_%s_learners_%s_groups_%s_pxpergroup_%s_bytes_diskwrite_%s" % \
                 (algorithm, algorithm, load, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk)
     localcmd("mkdir -p " + dirpath)
