@@ -28,10 +28,10 @@ javaGathererClass = "ch.usi.dslab.bezerra.sense.DataGatherer"
 javaDynamicGathererClass = "ch.usi.dslab.bezerra.mcad.benchmarks.DynamicBenchGatherer"
 gathererPort = "60000"
 
-cfabcast_logdir = SRC + "/logs"
-gcLogFile = cfabcast_logdir + "/gc.log"
+logdir = SRC + "/logs"
+gcLogFile = logdir + "/gc.log"
 
-MEM_OPTS="-Xms1538M -Xmx1538M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=" + cfabcast_logdir + " -XX:+UseParallelGC -XX:+UseCompressedOops"
+MEM_OPTS="-Xms1538M -Xmx1538M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=" + logdir + " -XX:+UseParallelGC -XX:+UseCompressedOops"
 PRINT_GC_OPTS="-XX:+PrintGCDetails -XX:+PrintGCTimeStamps -verbose:gc -Xloggc:" + gcLogFile
 TUNNING_GC="-XX:+UseG1GC"
 #HOST_OPTS="-Dakka.remote.netty.tcp.hostname=$HOST -Dakka.cluster.seed-nodes.1=akka.tcp://CFABCastSystem@$SEED1 -Dakka.cluster.seed-nodes.2=akka.tcp://CFABCastSystem@$SEED2"
@@ -46,27 +46,27 @@ javaCommand="java " + JAVA_OPTS
 # Global config
 configPath = SRC + "/config_parameters.json"
 # número de requisições que o cliente pode fazer por vez antes de receber alguma resposta
-numPermits = 1
+numPermits = 10
 # tamanho da msg em bytes
 messageSize = 200
 # duração em segundos
-benchDuration = 360
+benchDuration = 180
 # numero de clientes (BenchClient)
-numClients = 3
+numClients = 2
 # numero de grupos de multicast
 numGroups = 1
 # Uma maneira de aumentar throughput é ter vários grupos de acceptors independentes gerando mensagens, e os learners fazem merge determinístico das streams de mensagens. Isso divide a carga de ordenação entre conjuntos de processos paxos independentes, mas aumenta o processamento dos learners e, potencialmente, aumenta a latência se os conjuntos de paxos não estiverem sincronizados.
 numPxPerGroup = 1
 # cada learner tem um BenchServer associado, cria-se numLearners learners, e daí eles são divididos entre os numGroups grupos de multicast
-numLearners = 3
+numLearners = 2
 
 # quantidade de nós do protocolo:
 numService = 3
 
 writeToDisk = False
 
-logdir = settings.get_logdir("cfabcast", numClients, numPermits, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk)
-print logdir
+libmcad_logdir = settings.get_logdir("cfabcast", numClients, numPermits, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk)
+print libmcad_logdir
 
 #lastNode = settings.availableNodes[len(settings.availableNodes)-1:]
 #remainingNodes = settings.availableNodes[:len(settings.availableNodes)-1]
@@ -105,11 +105,12 @@ if runLocal:
     cfabcast_config = join(DEBUG, "cfabcast-debug.conf")
 
 for node in serviceNodes:
-    javaservicecmd = "%s -DLOG_DIR=%s -cp %s -Dconfig.file=%s Main %s" % (javaCommand, cfabcast_logdir, cfabcastjar, cfabcast_config, node)
+    node_stdout = logdir + "/cfabcast-" + node + ".out"
+    javaservicecmd = "%s -DLOG_DIR=%s -cp %s -Dconfig.file=%s Main %s" % (javaCommand, logdir, cfabcastjar, cfabcast_config, node)
     if runLocal:
-        localcmdbg(javaservicecmd)
+        localcmdbg(javaservicecmd, "", node_stdout)
     else:
-        sshcmdbg(node, javaservicecmd)
+        sshcmdbg(node, javaservicecmd, "", node_stdout)
 sleep(20)
 
 # Server Config
@@ -121,12 +122,13 @@ if runLocal:
     server_config = join(DEBUG, "server-debug.conf")
     
 for node in settings.createIdPerNodeList(serverNodes):
+    node_stdout = logdir + "/server-" + str(node["id"]) + ".out"
     env = "export APP_HOST=\"%s\" APP_PORT=%s ;" % (node["host"], 2550)
-    serverCommand = "%s -cp %s -Dconfig.file=%s %s %s %s %s %s %s %s" % (javaCommand, libmcadjar, server_config, benchServerClass, node["id"], configPath, gathererNode, gathererPort, logdir, benchDuration)
+    serverCommand = "%s -cp %s -Dconfig.file=%s %s %s %s %s %s %s %s" % (javaCommand, libmcadjar, server_config, benchServerClass, node["id"], configPath, gathererNode, gathererPort, libmcad_logdir, benchDuration)
     if runLocal:
-        localcmdbg(serverCommand, env)
+        localcmdbg(serverCommand, env, node_stdout)
     else:
-        sshcmdbg(node["host"], serverCommand, env)
+        sshcmdbg(node["host"], serverCommand, env, node_stdout)
 sleep(10)
 
 # Client config
@@ -139,12 +141,13 @@ if runLocal:
     client_config = join(DEBUG, "client-debug.conf")
 
 for node in settings.createIdPerNodeList(clientsNodes):
+    node_stdout = logdir + "/client-" + str(node["id"]) + ".out"
     env = "export APP_HOST=\"%s\" APP_PORT=%s SERVER_HOST=\"%s\" SERVER_PORT=%s ;" % (node["host"], 0, node["host"], 2550)
     clientCommand = "%s -cp %s -Dconfig.file=%s %s %s %s %s %s %s %s %s" % (javaCommand, libmcadjar, client_config, benchClientClass, node["id"], configPath, messageSize, numPermits, gathererNode, gathererPort, benchDuration)
     if runLocal:
-        localcmdbg(clientCommand, env)
+        localcmdbg(clientCommand, env, node_stdout)
     else:
-        sshcmdbg(node["host"], clientCommand, env)
+        sshcmdbg(node["host"], clientCommand, env, node_stdout)
 sleep(5)
 
     
@@ -153,7 +156,7 @@ sleep(5)
 # <command> <port> <directory> {<resource> <nodetype> <count>}+
 
 ## numClients * numPermits as "load"/as "numClients"?
-javagatherercmd = "%s -cp %s %s %s %s" % (javaCommand, libmcadjar, javaGathererClass, gathererPort, logdir)
+javagatherercmd = "%s -cp %s %s %s %s" % (javaCommand, libmcadjar, javaGathererClass, gathererPort, libmcad_logdir)
 javagatherercmd += " throughput conservative " + str(numClients)
 javagatherercmd += " throughput optimistic   " + str(numClients)
 javagatherercmd += " latency    conservative " + str(numClients)
@@ -171,7 +174,7 @@ else:
     exitcode = sshcmd(gathererNode, javagatherercmd, timetowait)
 
 if exitcode != 0 :
-    localcmd("touch %s/FAILED.txt" % (logdir))
+    localcmd("touch %s/FAILED.txt" % (libmcad_logdir))
 
 sleep(10)
 

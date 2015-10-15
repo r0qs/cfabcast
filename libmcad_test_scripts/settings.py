@@ -75,12 +75,12 @@ def localcmd(cmdstring, timeout=None) :
     cmd = Command(cmdstring)
     return cmd.run(timeout)
 
-def localcmdbg(cmdstring, env="") :
-    print "localcmdbg: " + env + " " + cmdstring + " >> " + log_file + " &"
+def localcmdbg(cmdstring, env="", out=log_file) :
+    print "localcmdbg: " + env + " " + cmdstring + " >> " + out + " &"
     if env != "":
-        os.system(env + " " + cmdstring + " >> " + log_file + " &")
+        os.system(env + " " + cmdstring + " >> " + out + " &")
     else:
-        os.system(cmdstring + " > " + log_file + " &")
+        os.system(cmdstring + " > " + out + " &")
 
 def sshcmd(node, cmdstring, timeout=None) :
     finalstring = "ssh " + node + " \"" + cmdstring + "\""
@@ -88,9 +88,9 @@ def sshcmd(node, cmdstring, timeout=None) :
     cmd = Command(finalstring)
     return cmd.run(timeout)
     
-def sshcmdbg(node, cmdstring, env="") :
-    print "ssh " + node + " \'" + env + " " + cmdstring + " >> " + log_file + "\' &"
-    os.system("ssh " + node + " \'" + env + " " + cmdstring + " >> " + log_file + "\' &")
+def sshcmdbg(node, cmdstring, env="", out=log_file) :
+    print "ssh " + node + " \'" + env + " " + cmdstring + " >> " + out + "\' &"
+    os.system("ssh " + node + " \'" + env + " " + cmdstring + " >> " + out + "\' &")
 
 # constants
 NODE = 0
