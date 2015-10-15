@@ -44,10 +44,10 @@ trait Proposer extends ActorLogging {
         ((msg.rnd.cfproposers diff Set(self)) union config.acceptors.values.toSet).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, msg.value)) 
         newState
       } else {
-        // Try repropose this value
-        log.debug(s"INSTANCE: ${msg.instance} - PROPOSAL - ${id} received proposal ${msg}, but not able to propose, because:  isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}")
+        //FIXME Try repropose this value
+        log.warning(s"INSTANCE: ${msg.instance} - PROPOSAL - ${id} received proposal ${msg}, but not able to propose, because:  isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}")
         //FIXME: Find a better way to do this!
-        self ! MakeProposal(msg.value.get(msg.senderId))     
+        retry(self, MakeProposal(msg.value.get(msg.senderId)))
         oldState
       }
     } else {
@@ -137,7 +137,7 @@ trait Proposer extends ActorLogging {
     future
   }
 */
-  def askRetry(delay: FiniteDuration, replyTo: ActorRef, message: Message)(implicit ec: ExecutionContext): Unit = { 
+  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 5 seconds)(implicit ec: ExecutionContext): Unit = { 
     context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
@@ -147,12 +147,10 @@ trait Proposer extends ActorLogging {
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
       if(waitFor <= config.acceptors.size) {
         log.debug("Receive proposal: {} from {}", data, sender)
-        // TODO: Clients must be associated with a proposer
-        // and servers with a learner (cluster client)
         self ! MakeProposal(Value(Some(data)))
       }
       else
-        log.debug("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
+        log.warning("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
 
     case GetState =>
       //TODO: async here!
@@ -165,18 +163,19 @@ trait Proposer extends ActorLogging {
     case msg: Learned =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       val learner = sender
-      val vmap = msg.vmap.get
+      val vmap = msg.vmap
       if (vmap == None) {
         log.warning("Learned NOTHING on: {} for instance: {}", learner, msg.instance)
       } else {
         state onSuccess {
           case s => 
             //TODO verify if proposed value is equals to decided value
-            if (vmap.values.toSet.contains(s.pval.get(id))) {
+            // Handle case when: java.util.NoSuchElementException: None.get
+            if (vmap.get(id) == s.pval.get(id)) {
               learnedInstances = learnedInstances.insert(msg.instance) 
-              log.info("Proposer: {} learned: {} in instance: {} with vmap: {}", id, learnedInstances, msg.instance, vmap)
+              log.info("Proposer: {} learned: {} in instance: {}", id, learnedInstances, msg.instance)
             } else {
-              log.error(s"INSTANCE: ${msg.instance} - ${id} - Proposed value: ${s.pval} was NOT LEARNED: ${msg.vmap} send by ${learner}")
+              log.error(s"INSTANCE: ${msg.instance} - ${id} - Proposed value: ${s.pval} was NOT LEARNED: ${vmap} send by ${learner}")
               context.stop(self)
             }
         }
@@ -216,7 +215,7 @@ trait Proposer extends ActorLogging {
 
             case Failure(ex) => 
               log.warning(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
-              askRetry(5 seconds, self, msg)
+              retry(self, msg)
           }
         } else {
           log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
@@ -278,18 +277,17 @@ trait Proposer extends ActorLogging {
         }
         if (isCFProposerOf(round)) {
           proposed += 1
-          val p = proposed
           // If not proposed and not learned nothing yet in this instance
-          log.debug(s"${self} -> DECIDED= ${learnedInstances} , PROPOSED= ${p}, trying value: ${msg.value}")
-          if (!learnedInstances.contains(p)) {
-            self ! TryPropose(p, round, msg.value)
+          log.info(s"Proposer: ${id} -> DECIDED= ${learnedInstances} , PROPOSED= ${proposed}, trying value: ${msg.value}")
+          if (!learnedInstances.contains(proposed)) {
+            self ! TryPropose(proposed, round, msg.value)
           } else {
             // Not repropose Nil on the last valid instance, use it to a new value
             val nilReproposalInstances = learnedInstances.complement().dropLast
             nilReproposalInstances.iterateOverAll(i => {
-              log.debug(s"INSTANCE: ${i} - MAKEPROPOSAL: ${id} sending NIL to LEARNERS")
+              log.info(s"INSTANCE: ${i} - MAKEPROPOSAL: ${id} sending NIL to LEARNERS")
               self ! TryPropose(i, round, Nil)
-              //FIXME: Maybe send this direct to learners:w
+              //FIXME: Maybe send this direct to learners
               //exec phase2A
             })
             val instance = learnedInstances.next
@@ -297,12 +295,13 @@ trait Proposer extends ActorLogging {
           }
         } else {
           val cfps = round.cfproposers
-          log.debug("{} - Receive a proposal: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
+          log.info("{} - Receive a proposal: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
           if(cfps.nonEmpty) {
             cfps.toVector(Random.nextInt(cfps.size)) forward msg
           } else {
+            //FIXME: Do leader election
             log.warning("{} - EMPTY CFP for round: {} when receive: {}", self, round, msg)
-            askRetry(5 seconds, self, msg)
+            retry(self, msg)
           }
         }
       } else {
@@ -312,7 +311,7 @@ trait Proposer extends ActorLogging {
 
     case msg @ TryPropose(instance, rnd, value) =>
       if (instance > proposed) {
-        log.debug(s"UPDATE proposed: ${proposed} to ${instance}")
+        log.info(s"UPDATE proposed: ${proposed} to ${instance}")
         proposed = instance
       }
       log.debug(s"INSTANCE: ${instance} - ${id} receive ${msg} PROPOSING VALUE ${value}")
