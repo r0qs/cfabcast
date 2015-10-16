@@ -26,7 +26,7 @@ def testNodes() :
         assert exitcode == 0
 
 # cluster available nodes
-availableNodes = noderange(42,45)
+availableNodes = noderange(42,52)
 
 class NodePool:
     nodePointer = -1

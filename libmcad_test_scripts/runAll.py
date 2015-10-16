@@ -6,6 +6,11 @@ import sys, os
 from os.path import join, expanduser
 from time import sleep
 
+sshcmd = settings.sshcmd
+sshcmdbg = settings.sshcmdbg
+localcmd = settings.localcmd
+localcmdbg = settings.localcmdbg
+
 runLocal = False
 
 SRC = os.getcwd()
@@ -20,16 +25,37 @@ ridgejar = join(JARS, "ridge-git.jar")
 cfabcastjar = join(JARS, "CFABCast-assembly-0.1-SNAPSHOT.jar")
 libmcadjar = join(JARS, "libmcad-git-allinone.jar")
 
-# cleanup logs
-#clean_log(logdir)
+# número de requisições que o cliente pode fazer por vez antes de receber alguma resposta
+numPermits = 10
+# tamanho da msg em bytes
+messageSize = 200
+# duração em segundos
+benchDuration = 600
+# numero de clientes (BenchClient)
+numClients = 2
+# numero de grupos de multicast
+numGroups = 1
+# Uma maneira de aumentar throughput é ter vários grupos de acceptors independentes gerando mensagens, e os learners fazem merge determinístico das streams de mensagens. Isso divide a carga de ordenação entre conjuntos de processos paxos independentes, mas aumenta o processamento dos learners e, potencialmente, aumenta a latência se os conjuntos de paxos não estiverem sincronizados.
+numPxPerGroup = 1
+# cada learner tem um BenchServer associado, cria-se numLearners learners, e daí eles são divididos entre os numGroups grupos de multicast
+numLearners = 2
+
+# quantidade de nós do protocolo:
+numService = 3
+
+writeToDisk = False
 
 # MONITORING
 javaGathererClass = "ch.usi.dslab.bezerra.sense.DataGatherer"
 javaDynamicGathererClass = "ch.usi.dslab.bezerra.mcad.benchmarks.DynamicBenchGatherer"
 gathererPort = "60000"
 
-logdir = SRC + "/logs"
+libmcad_logdir = settings.get_logdir("cfabcast", numClients, numPermits, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk)
+print libmcad_logdir
+logdir = libmcad_logdir + "/logs"
 gcLogFile = logdir + "/gc.log"
+# cleanup logs
+#clean_log(logdir)
 
 MEM_OPTS="-Xms1538M -Xmx1538M -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=" + logdir + " -XX:+UseParallelGC -XX:+UseCompressedOops"
 PRINT_GC_OPTS="-XX:+PrintGCDetails -XX:+PrintGCTimeStamps -verbose:gc -Xloggc:" + gcLogFile
@@ -45,28 +71,6 @@ javaCommand="java " + JAVA_OPTS
 
 # Global config
 configPath = SRC + "/config_parameters.json"
-# número de requisições que o cliente pode fazer por vez antes de receber alguma resposta
-numPermits = 10
-# tamanho da msg em bytes
-messageSize = 200
-# duração em segundos
-benchDuration = 180
-# numero de clientes (BenchClient)
-numClients = 2
-# numero de grupos de multicast
-numGroups = 1
-# Uma maneira de aumentar throughput é ter vários grupos de acceptors independentes gerando mensagens, e os learners fazem merge determinístico das streams de mensagens. Isso divide a carga de ordenação entre conjuntos de processos paxos independentes, mas aumenta o processamento dos learners e, potencialmente, aumenta a latência se os conjuntos de paxos não estiverem sincronizados.
-numPxPerGroup = 1
-# cada learner tem um BenchServer associado, cria-se numLearners learners, e daí eles são divididos entre os numGroups grupos de multicast
-numLearners = 2
-
-# quantidade de nós do protocolo:
-numService = 3
-
-writeToDisk = False
-
-libmcad_logdir = settings.get_logdir("cfabcast", numClients, numPermits, numLearners, numGroups, numPxPerGroup, messageSize, writeToDisk)
-print libmcad_logdir
 
 #lastNode = settings.availableNodes[len(settings.availableNodes)-1:]
 #remainingNodes = settings.availableNodes[:len(settings.availableNodes)-1]
@@ -93,11 +97,6 @@ if runLocal:
     serviceNodes = ["node1", "node2", "node3"]
     serverNodes = clientsNodes = ["127.0.0.1"]
     monitorNode = "127.0.0.1"
-
-sshcmd = settings.sshcmd
-sshcmdbg = settings.sshcmdbg
-localcmd = settings.localcmd
-localcmdbg = settings.localcmdbg
 
 print "Starting service nodes..."
 cfabcast_config = join(DEPLOY, "cfabcast-deploy.conf")
