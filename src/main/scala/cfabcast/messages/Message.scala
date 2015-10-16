@@ -41,8 +41,7 @@ case class ApplySnapShot(snapshot: AcceptorState) extends Message
  * Auxiliary messages
  */
 // Message sent to propose a new value
-case class MakeProposal(value: Values) extends Message
-case class TryPropose(instance: Int, rnd: Round, value: Values) extends Message
+case class TryPropose(value: Values) extends Message
 
 case object GetCFPs extends Message
 
