@@ -5,28 +5,40 @@ import os, sys, shlex, threading, subprocess
 from time import sleep
 from os.path import join, expanduser
 
-#SRC = join(expanduser('~'), "src/mestrado/scala/test")
+# Directories
 SRC = os.getcwd()
 log_file = join(SRC, "logs/stdout")
 
-def clean_log(logdir) :
-    assert logdir.strip() != " "
-    localcmd("rm -rf " + logdir + "/*")
-    # service logs
-    # TODO
-    #localcmd("rm -rf logs/*.log target/snapshots/ target/shared-journal/")
+# cleanup logs
+#clean_log(logdir)
+
+# MONITORING
+javaGathererClass = "ch.usi.dslab.bezerra.sense.DataGatherer"
+javaDynamicGathererClass = "ch.usi.dslab.bezerra.mcad.benchmarks.DynamicBenchGatherer"
+gathererPort = "60000"
+
+# Global config
+# Benchmark duration in seconds
+benchDuration = 60
+# Sever class
+benchServerClass = "ch.usi.dslab.bezerra.mcad.benchmarks.BenchServer"
+# Client class
+benchClientClass = "ch.usi.dslab.bezerra.mcad.benchmarks.BenchClient"
+
+# single experiment
+onceRunner = {"cfabcast" : SRC + "/runOnce_cfabcast.py", }
 
 # available machines
 def noderange(first,last) :
     return ["node" + str(val) for val in range(first, last + 1)]
 
+# cluster available nodes
+availableNodes = noderange(42,52)
+
 def testNodes() :
     for n in availableNodes :
         exitcode = localcmd("ssh %s uname -a" % (n))
         assert exitcode == 0
-
-# cluster available nodes
-availableNodes = noderange(42,52)
 
 class NodePool:
     nodePointer = -1
@@ -54,29 +66,29 @@ class Command(object):
 
     def run(self, timeout):
         def target():
-            print 'Thread started'
+            print('Thread started')
             run_args = shlex.split(self.cmd)
             self.process = subprocess.Popen(run_args)
             self.process.communicate()
-            print 'Thread finished'
+            print('Thread finished')
 
         thread = threading.Thread(target=target)
         thread.start()
 
         thread.join(timeout)
         if thread.is_alive():
-            print 'Terminating process'
+            print('Terminating process')
             self.process.terminate()
             thread.join()
         return self.process.returncode
 
 def localcmd(cmdstring, timeout=None) :
-    print "localcmd: " + cmdstring
+    print("localcmd: " + cmdstring)
     cmd = Command(cmdstring)
     return cmd.run(timeout)
 
 def localcmdbg(cmdstring, env="", out=log_file) :
-    print "localcmdbg: " + env + " " + cmdstring + " >> " + out + " &"
+    print("localcmdbg: " + env + " " + cmdstring + " >> " + out + " &")
     if env != "":
         os.system(env + " " + cmdstring + " >> " + out + " &")
     else:
@@ -84,13 +96,25 @@ def localcmdbg(cmdstring, env="", out=log_file) :
 
 def sshcmd(node, cmdstring, timeout=None) :
     finalstring = "ssh " + node + " \"" + cmdstring + "\""
-    print finalstring
+    print(finalstring)
     cmd = Command(finalstring)
     return cmd.run(timeout)
     
 def sshcmdbg(node, cmdstring, env="", out=log_file) :
-    print "ssh " + node + " \'" + env + " " + cmdstring + " >> " + out + "\' &"
+    print("ssh " + node + " \'" + env + " " + cmdstring + " >> " + out + "\' &")
     os.system("ssh " + node + " \'" + env + " " + cmdstring + " >> " + out + "\' &")
+
+def sarg(i) :
+    return sys.argv[i]
+
+def iarg(i) :
+    return int(sarg(i))
+
+def farg(i) :
+    return float(sarg(i))
+
+def barg(i) :
+    return sarg(i) in ["True", "true", "T", "t", 1]
 
 # constants
 NODE = 0
