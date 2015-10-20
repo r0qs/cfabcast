@@ -165,12 +165,10 @@ class Node extends Actor with ActorLogging {
         case "all"      => 
           config.proposers.values.zipWithIndex.foreach { case (ref, i) =>
             ref ! Broadcast(serializer.toBinary(cmd ++ "_" ++ i.toString))
-            //ref ! MakeProposal(Value(Some(serializer.toBinary(cmd ++ "_" ++ i.toString))))
           }
         case _ => 
           if(proposers.nonEmpty) {
             val data = serializer.toBinary(cmd)
-            //proposers.values.toVector(Random.nextInt(proposers.size)) ! MakeProposal(Value(Some(data)))
             proposers.values.toVector(Random.nextInt(proposers.size)) ! Broadcast(data)
           } else {
             log.info(s"Ops!! This node [${nodeId}] don't have a proposer to handle commands.")
