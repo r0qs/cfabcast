@@ -55,6 +55,7 @@ trait Learner extends ActorLogging {
       }
       newState
     } else { 
+      //TODO super optimist delivery
       log.debug(s"INSTANCE: ${instance} - MSG2B - ${id} Quorum requirements not satisfied: ${quorum.size}")
       oldState
     }
@@ -74,7 +75,7 @@ trait Learner extends ActorLogging {
           context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
         }
       } else {
-        log.debug(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
+        log.error(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
       }
 
     case msg: Msg2B =>
