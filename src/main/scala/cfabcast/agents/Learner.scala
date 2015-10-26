@@ -55,7 +55,7 @@ trait Learner extends ActorLogging {
       }
       newState
     } else { 
-      //TODO super optimist delivery
+      //TODO super optimistic delivery
       log.debug(s"INSTANCE: ${instance} - MSG2B - ${id} Quorum requirements not satisfied: ${quorum.size}")
       oldState
     }
