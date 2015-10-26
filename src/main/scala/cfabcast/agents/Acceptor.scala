@@ -11,7 +11,6 @@ import scala.util.Random
 import scala.async.Async.{async, await}
 
 import akka.actor._
-import akka.persistence._
 
 trait Acceptor extends ActorLogging {
   this: AcceptorActor =>
@@ -24,7 +23,6 @@ trait Acceptor extends ActorLogging {
         log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B1 - ${id} Cond1 satisfied with msg VALUE: ${msg.value}")
         val newState = oldState.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value)
         config.learners.values foreach (_ ! Msg2B(id, msg.instance, newState.rnd, newState.vval))
-        persistentAcceptor ! Persist(Map(msg.instance -> newState))
         newState
       } else {
         log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${oldState.rnd} - PHASE2B1 - ${id} Cond1 NOT satisfied with msg VALUE: ${msg.value} and ROUND: ${msg.rnd} with STATE: ${oldState}")
@@ -56,7 +54,6 @@ trait Acceptor extends ActorLogging {
         val newState = oldState.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value))
         log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${id} accept VALUE: ${newState.vval}")
         config.learners.values foreach (_ ! Msg2B(id, msg.instance, msg.rnd, newState.vval))
-        persistentAcceptor ! Persist(Map(msg.instance -> newState))
         newState
       } else {
         log.debug(s"INSTANCE: ${msg.instance} - PHASE2B2 - ${id} RND: ${oldState.rnd} is greater than msg ROUND: ${msg.rnd} or VALUE: ${msg.value.get(msg.senderId)} is NIL with STATE: ${oldState}")
@@ -68,6 +65,7 @@ trait Acceptor extends ActorLogging {
     }
   }
   
+  // TODO: persist here!?
   def phase1B(actorSender: ActorRef, msg: Msg1A, state: Future[AcceptorMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[AcceptorMeta] = async {
     val oldState = await(state)
     if (oldState.rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
@@ -104,7 +102,7 @@ trait Acceptor extends ActorLogging {
         context.become(acceptorBehavior(config, instances + (instance ->  phase1B(sender, Msg1A(msg.senderId, instance, msg.rnd), state, config))))
       } else {
         instancesAccepted.iterateOverAll(i => {
-          log.info(s"Handle 1A for instance: ${i} and round: ${msg.rnd}")
+          log.debug(s"Handle 1A for instance: ${i} and round: ${msg.rnd}")
           val state = instances(i)
           context.become(acceptorBehavior(config, instances + (i ->  phase1B(sender, Msg1A(msg.senderId, i, msg.rnd), state, config))))
         })
@@ -124,58 +122,12 @@ trait Acceptor extends ActorLogging {
     // TODO: Do this in a sharedBehavior
     case msg: UpdateConfig =>
       context.become(acceptorBehavior(msg.config, instances))
-
-    case "snap" => persistentAcceptor ! "snap"
-
-    case "print" => persistentAcceptor ! "print"
-
-    case ApplySnapShot(snapshot) =>
-      log.info(s"Applying snapshot from ${sender} with ${snapshot}")
-      var m = Map[Instance, Future[AcceptorMeta]]()
-      snapshot.events.foreach( { case (instance, state) =>
-        m += (instance -> Future.successful(state))
-      })
-      context.become(acceptorBehavior(config, m))
-      //call configure to run phase 1A again
   }
-}
-//FIXME: crash sometimes
-class PersistentAcceptor(id: AgentId) extends PersistentActor {
-  override def persistenceId = s"persistentAcceptor-$id"
-
-  var state = AcceptorState()
-
-  def updateState(event: Evt): Unit = {
-    state = state.updated(event)
-    self ! "snap"
-  }
-
-  val receiveRecover: Receive = {
-    case evt: Evt                                  => updateState(evt)
-    case SnapshotOffer(_, snapshot: AcceptorState) =>
-      state = snapshot
-      context.parent ! ApplySnapShot(snapshot)
-  }
-
-  val receiveCommand: Receive = {
-    case Persist(data) => persist(Evt(data))(updateState)
-    case "snap"  => saveSnapshot(state)
-    case "print" => println(state)
-  }
-
-}
-
-object PersistentAcceptor {
-  def props(id: AgentId) : Props = Props(classOf[PersistentAcceptor], id)
 }
 
 class AcceptorActor(val id: AgentId) extends Actor with Acceptor {
-  //var rnd: Round = Round()
-  val persistentAcceptor = context.actorOf(PersistentAcceptor.props(id), s"persistentActor-$id")
-
   override def preStart(): Unit = {
     log.info("Acceptor ID: {} UP on {}", id, self.path)
-    // Request a snapshot
   }
 
   def receive = acceptorBehavior(ClusterConfiguration(), Map())(context.system.dispatcher)
