@@ -12,8 +12,8 @@ Please look in the official [documentation of sbt](http://www.scala-sbt.org/rele
 
 ```
 Running with SBT:
-sbt -Dconfig.file=src/main/resources/cfabcast.conf 'run-main Main node41'
+sbt -Dconfig.file=benchmark/debug/cfabcast-debug.conf 'run-main Main node1'
 
 Running with uber jar:
-java -cp target/scala-2.11/CFABCast-assembly-0.1-SNAPSHOT.jar -Dconfig.file=src/main/resources/cfabcast.conf Main node1
+java -cp target/scala-2.11/CFABCast-assembly-0.1-SNAPSHOT.jar -Dconfig.file=benchmark/debug/cfabcast-debug.conf Main node1
 ```
