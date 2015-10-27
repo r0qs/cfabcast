@@ -7,19 +7,19 @@ import akka.serialization.SerializationExtension
 
 class CFABCastSerializer(val system: ExtendedActorSystem) extends Serializer {
 
-  override def includeManifest: Boolean = true
+  override def includeManifest: Boolean = false
 
   //FIXME: Randomly generate identifier
   override def identifier = 32974
 
-  lazy val javaSerializer = SerializationExtension(system).findSerializerFor(classOf[java.io.Serializable])
+  lazy val kryoSerializer = SerializationExtension(system).findSerializerFor(classOf[com.romix.akka.serialization.kryo.KryoSerializer])
 
   def toBinary(obj: AnyRef): Array[Byte] = {
-    javaSerializer.toBinary(obj)
+    kryoSerializer.toBinary(obj)
   }
 
   def fromBinary(bytes: Array[Byte], clazz: Option[Class[_]]): AnyRef = {
-    javaSerializer.fromBinary(bytes, clazz)
+    kryoSerializer.fromBinary(bytes, clazz)
   }
 
 }

@@ -49,6 +49,7 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-contrib" % "2.3.14",
   "com.typesafe.akka" %% "akka-persistence-experimental" % "2.3.14",
   "com.typesafe.akka" %% "akka-slf4j" % "2.3.14",
+  "com.github.romix.akka" %% "akka-kryo-serialization" % "0.3.3",
   "org.scala-lang.modules" %%	"scala-async" % "0.9.5", 
   "ch.qos.logback" % "logback-classic" % "1.1.3",
   "org.scalatest" %% "scalatest" % "2.2.1" % "test"
