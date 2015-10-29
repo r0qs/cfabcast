@@ -44,10 +44,9 @@ trait Proposer extends ActorLogging {
         ((msg.rnd.cfproposers diff Set(self)) union config.acceptors.values.toSet).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, msg.value)) 
         newState
       } else {
-        //FIXME Try repropose this value
         //log.warning(s"INSTANCE: ${msg.instance} - PROPOSAL - ${id} received proposal ${msg}, but not able to propose, because:  isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}")
-        //FIXME: Find a better way to do this!
-        retry(self, TryPropose(msg.value.get(msg.senderId)))
+        //FIXME: Find a better way to do this! This happen many times!!! 
+        //retry(self, TryPropose(msg.value.get(msg.senderId)))
         oldState
       }
     } else {
@@ -140,7 +139,47 @@ trait Proposer extends ActorLogging {
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
       if (waitFor <= config.acceptors.size) {
         log.debug("Receive proposal: {} from {}", msg.data, sender)
-        self ! TryPropose(Value(Some(msg.data)))
+        val value = Value(Some(msg.data))
+        // update the grnd
+        if (coordinators.nonEmpty) {
+          var round = prnd
+          if (grnd > prnd) {
+            log.debug("Proposer:{} - PRND: {} is less than GRND: {}", id, prnd, grnd)
+            round = grnd
+          }
+          if (isCFProposerOf(round)) {
+            proposed += 1
+            log.debug("{} - PROPOSED: {} Greatest known instance: {}", id, proposed, greatestInstance)
+            if (proposed > greatestInstance) {
+              greatestInstance = proposed
+            } else if (proposed < greatestInstance) {
+              proposed = greatestInstance + 1
+            }
+            log.info("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
+            // If not proposed and not learned nothing yet in this instance
+            val vmap: Option[VMap[Values]] = Some(VMap(id -> value))
+            var instance = learnedInstances.next
+            if (!learnedInstances.contains(proposed)) {
+              instance = proposed
+            }
+            val proposalMsg = Proposal(id, instance, round, vmap)
+            val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
+            context.become(proposerBehavior(config, instances + (instance -> propose(proposalMsg, state, config))))
+          } else {
+            val cfps = round.cfproposers
+            log.warning("{} - Receive a broadcast: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
+            if(cfps.nonEmpty) {
+              cfps.toVector(Random.nextInt(cfps.size)) forward msg
+            } else {
+              //FIXME: Do leader election
+              log.error("{} - EMPTY CFP for round: {} when receive: {}", self, round, msg)
+              //retry(self, msg)
+            }
+          }
+        } else {
+          //TODO: Stash proposal and do leader election!
+          log.error("Coordinator NOT FOUND for round {}", prnd)
+        } 
       } else {
         log.warning("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
       }
@@ -198,6 +237,14 @@ trait Proposer extends ActorLogging {
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
           cfpSet onComplete {
             case Success(cfp) => 
+              // Not repropose Nil on the last valid instance, use it to a new value
+              /*val nilReproposalInstances = learnedInstances.complement().dropLast
+              nilReproposalInstances.iterateOverAll(i => {
+                log.info(s"INSTANCE: ${i} - proposed: ${id} sending NIL to himself")
+                self ! Proposal(id, i, round, Some(VMap(id -> Nil)))
+                //FIXME: Maybe send this direct to learners
+                //exec phase2A
+              })*/
               learnedInstances.complement().iterateOverAll(instance => {
                 val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
                 val rnd = Round(getCRoundCount, msg.coordinators, cfp)
@@ -229,11 +276,6 @@ trait Proposer extends ActorLogging {
         log.debug(s"NOT UPDATE ROUND GRND: ${grnd} because is greater than MSG.RND: ${msg.rnd}")
       }
         
-    case msg: Proposal =>
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
-      context.become(proposerBehavior(config, instances + (msg.instance -> propose(msg, state, config))))
-
     case msg: Msg2A =>
       log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
       updateInstance(msg.instance)
@@ -260,56 +302,6 @@ trait Proposer extends ActorLogging {
     case msg: UpdateConfig =>
       context.become(proposerBehavior(msg.config, instances))
 
-    case msg: TryPropose =>
-      log.debug(s"${id} - PRND:${prnd} CRND: ${crnd} GRND: ${grnd} - receive ${msg} from ${sender} with PROPOSED COUNTER=${proposed}")
-      // update the grnd
-      if (coordinators.nonEmpty) {
-        var round = prnd
-        if (grnd > prnd) {
-          log.debug(s"Proposer:${id} - PRND: ${prnd} is less than GRND: ${grnd}")
-          round = grnd
-        }
-        if (isCFProposerOf(round)) {
-          proposed += 1
-          log.debug(s"${id} - PROPOSED: ${proposed} Greatest known instance: ${greatestInstance}")
-          if (proposed > greatestInstance) {
-            greatestInstance = proposed
-          } else if (proposed < greatestInstance) {
-            proposed = greatestInstance + 1
-          }
-          // If not proposed and not learned nothing yet in this instance
-          //FIXME: java.lang.OutOfMemoryError: GC overhead limit exceeded
-          log.info(s"Proposer: ${id} -> DECIDED= ${learnedInstances} , PROPOSED= ${proposed}")
-          if (!learnedInstances.contains(proposed)) {
-            log.debug(s"INSTANCE: ${proposed} - ${id} sending proposal to self with VALUE ${msg.value}")
-            self ! Proposal(id, proposed, round, Some(VMap(id -> msg.value)))
-          } else {
-            // Not repropose Nil on the last valid instance, use it to a new value
-            /*val nilReproposalInstances = learnedInstances.complement().dropLast
-            nilReproposalInstances.iterateOverAll(i => {
-              log.info(s"INSTANCE: ${i} - proposed: ${id} sending NIL to himself")
-              self ! Proposal(id, i, round, Some(VMap(id -> Nil)))
-              //FIXME: Maybe send this direct to learners
-              //exec phase2A
-            })*/
-            val instance = learnedInstances.next
-            self ! Proposal(id, instance, round, Some(VMap(id -> msg.value)))
-          }
-        } else {
-          val cfps = round.cfproposers
-          log.warning("{} - Receive a TryPropose: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
-          if(cfps.nonEmpty) {
-            cfps.toVector(Random.nextInt(cfps.size)) forward msg
-          } else {
-            //FIXME: Do leader election
-            log.error("{} - EMPTY CFP for round: {} when receive: {}", self, round, msg)
-            retry(self, msg)
-          }
-        }
-      } else {
-        //TODO: Stash proposal and do leader election!
-        log.error("Coordinator NOT FOUND for round {}", prnd)
-      } 
   }
 }
 
