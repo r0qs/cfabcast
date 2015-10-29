@@ -41,17 +41,20 @@
     </appender>
 
     <!-- Enable FILE and STDOUT appenders for all log messages. -->
-    <!-- <root level="DEBUG">
+    <!--<root level="DEBUG">
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDOUT"/>
     </root> -->
 
     <logger name="akka.cluster.ClusterHeartbeatSender" level="OFF"/>
-  
-   <logger name="cfabcast" level="ALL">
+    <logger name="akka.cluster.GossipEnvelope" level="OFF" />
+    <logger name="akka.cluster.GossipStatus" level="OFF" />
+
+    <logger name="cfabcast" level="ALL">
         <appender-ref ref="FILE"/>
         <appender-ref ref="STDOUT"/> 
-    </logger> 
-    <!-- <logger name="user" level="ALL"/> -->
+    </logger>
+
+    <!-- <logger name="user" level="DEBUG"/>  -->
 
 </configuration>
