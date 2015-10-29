@@ -39,7 +39,7 @@ trait Learner extends ActorLogging {
       //FIXME Find a better way to verify this!
       if (newState.learned.get.size > oldState.learned.get.size) {
         // The vmap was extented, notify the new values decided
-        // Deliver a complete vmap
+        // Conservative deliver a complete vmap
         log.debug("Extending VMAP... domain:{} newState.domain: {}", domain, newState.learned.get.domain)
         if (newState.learned.get.isComplete(domain)) {
           context.actorSelection("../proposer*") ! Learned(instance, newState.learned)

@@ -130,7 +130,7 @@ trait Proposer extends ActorLogging {
 
   def getCRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
 
-  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 5 seconds)(implicit ec: ExecutionContext): Unit = { 
+  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 1 seconds)(implicit ec: ExecutionContext): Unit = { 
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
@@ -315,7 +315,7 @@ trait Proposer extends ActorLogging {
 
 class ProposerActor(val id: AgentId) extends Actor with Proposer {
   val settings = Settings(context.system)
-  val waitFor = settings.MinNrOfAgentsOfRole("acceptor")
+  val waitFor = settings.MinNrOfNodes
 
   // Greatest known round
   var grnd: Round = Round()

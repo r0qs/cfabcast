@@ -103,22 +103,23 @@ akka {
 
 cfabcast {
   # Minimum required number of nodes before start computation
-  min-nr-of-nodes = 1
+  min-nr-of-nodes = 3
   
   node-id = ""
 
+  # Determines the size of the Quorum of Acceptors
+  # (nr-of-acceptors / 2) + 1
+  quorum-size = 2
+
   role {
     # Minimum required number of agents of a certain role before start the protocol
-    # E.g. to require 2 agents with role 'cfproposer' and 3 agents with role 'acceptor':
+    # E.g. to require 2 agents with role 'cfproposer':
     #   cfproposer.min-nr-of-agents = 2
-    #   acceptor.min-nr-of-agents = 3
     #
     #<role-name>.min-nr-of-agents = 1
     
+    # 1 == classic paxos
     cfproposer.min-nr-of-agents = 3 
-
-    # Determines the Quorum size
-    acceptor.min-nr-of-agents = 3
   }
 
   nodes {

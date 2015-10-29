@@ -23,6 +23,10 @@ class CFABCastSettings(config: Config) extends Extension {
     cc.getInt("min-nr-of-nodes")
   } requiring (_ > 0, "min-nr-of-nodes must be > 0")
 
+  val QuorumSize: Int = {
+    cc.getInt("quorum-size")
+  } requiring (_ > 0, "quorum-size must be > 0")
+
   val MinNrOfAgentsOfRole: Map[String, Int] = {
     import scala.collection.JavaConverters._
     cc.getConfig("role").root.asScala.collect {

@@ -22,7 +22,7 @@ import cfabcast.agents._
 import cfabcast.serialization.CFABCastSerializer
 
 /*
- * Cluster node
+ * Cluster replica
  * This node will handle the request of some client command
  */
 class Node extends Actor with ActorLogging {
@@ -30,7 +30,8 @@ class Node extends Actor with ActorLogging {
   val cluster = Cluster(context.system)
   val settings = Settings(context.system)
   val nodeId = settings.NodeId
-  val waitFor = settings.MinNrOfAgentsOfRole("acceptor")
+  val waitFor = settings.MinNrOfNodes
+  val quorumSize = settings.QuorumSize
   val nodeAgents = settings.NrOfAgentsOfRoleOnNode
   val proposersIds = settings.ProposerIdsByName
   val learnersIds = settings.LearnerIdsByName
@@ -78,7 +79,7 @@ class Node extends Actor with ActorLogging {
 
   val cfproposerOracle = context.actorOf(Props[CFProposerOracle], "cfproposerOracle")
 
-  val myConfig = ClusterConfiguration(proposers, acceptors, learners)
+  val myConfig = ClusterConfiguration(quorumSize, proposers, acceptors, learners)
 
   log.info(s"Registering Recepcionist on node: $nodeId")
   ClusterReceptionistExtension(context.system).registerService(self)
@@ -216,7 +217,9 @@ class Node extends Actor with ActorLogging {
 
     case ActorIdentity(member: Member, None) =>
       log.warning("Unable to find any actor on node: {}", member.address)
-    
+      // Try again, and again...
+      context.actorSelection(memberPath(member.address)) ! Identify(member)
+
     // Get the configuration of some member node
     case GiveMeAgents =>
       sender ! GetAgents(self, myConfig)

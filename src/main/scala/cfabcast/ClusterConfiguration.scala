@@ -24,6 +24,7 @@ sealed trait ClusterConfiguration {
   // TODO: sort by hashcode/id
   def +(that: ClusterConfiguration) = {
     val c = ClusterConfiguration(
+      this.quorumSize,
       this.proposers ++ that.proposers,
       this.acceptors ++ that.acceptors,
       this.learners ++ that.learners)
@@ -33,6 +34,7 @@ sealed trait ClusterConfiguration {
 
   def -(that: ClusterConfiguration) = {
     val c = ClusterConfiguration(
+      this.quorumSize,
       this.proposers -- that.proposers.keys,
       this.acceptors -- that.acceptors.keys,
       this.learners -- that.learners.keys)
@@ -43,10 +45,11 @@ sealed trait ClusterConfiguration {
 
 object ClusterConfiguration {
   def apply(
+    quorumSize: Int,
     proposers: Map[AgentId, ActorRef],
     acceptors: Map[AgentId, ActorRef], 
     learners: Map[AgentId, ActorRef]): ClusterConfiguration = {
-      val s = SimpleClusterConfiguration((acceptors.size/2) + 1, proposers, acceptors, learners)
+      val s = SimpleClusterConfiguration(quorumSize, proposers, acceptors, learners)
       s.reverseAll
       s
     }
