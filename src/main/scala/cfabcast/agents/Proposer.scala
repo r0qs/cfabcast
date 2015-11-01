@@ -44,9 +44,9 @@ trait Proposer extends ActorLogging {
         ((msg.rnd.cfproposers diff Set(self)) union config.acceptors.values.toSet).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, msg.value)) 
         newState
       } else {
-        //log.warning(s"INSTANCE: ${msg.instance} - PROPOSAL - ${id} received proposal ${msg}, but not able to propose, because:  isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL is: ${oldState.pval}")
+        log.warning(s"INSTANCE: ${msg.instance} - PROPOSAL - ${id} received proposal ${msg}, but not able to propose, because:  isCFP: ${isCFProposerOf(msg.rnd)} PRND: ${prnd} PVAL == Nil: ${oldState.pval.get(msg.senderId) == Nil} PVAL == None: ${oldState.pval == None} MSG.VAL=${msg.value.get(msg.senderId)}")
         //FIXME: Find a better way to do this! This happen many times!!! 
-        //retry(self, TryPropose(msg.value.get(msg.senderId)))
+        retryBroadcast(self, Broadcast(msg.value.get(msg.senderId).value.asInstanceOf[Array[Byte]]))
         oldState
       }
     } else {
@@ -129,7 +129,11 @@ trait Proposer extends ActorLogging {
 
   def getCRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
 
-  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 1 seconds)(implicit ec: ExecutionContext): Unit = { 
+  def retryBroadcast(replyTo: ActorRef, message: CFABCastMessage, delay: FiniteDuration = 0 seconds)(implicit ec: ExecutionContext): Unit = { 
+    val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
+  }
+
+  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 0 seconds)(implicit ec: ExecutionContext): Unit = { 
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
@@ -152,7 +156,7 @@ trait Proposer extends ActorLogging {
             log.debug("{} - PROPOSED: {} Greatest known instance: {}", id, proposed, greatestInstance)
             if (proposed > greatestInstance) {
               greatestInstance = proposed
-            } else if (proposed < greatestInstance) {
+            } else if (proposed <= greatestInstance) {
               proposed = greatestInstance + 1
             }
             log.info("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
@@ -233,7 +237,7 @@ trait Proposer extends ActorLogging {
         if (msg.coordinators contains self) {
           log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
           // Run configure phase (1)
-          implicit val timeout = Timeout(5 seconds)
+          implicit val timeout = Timeout(3 seconds)
           val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
           cfpSet onComplete {
             case Success(cfp) => 
@@ -318,7 +322,7 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
  
   // FIXME: This need to be Long?
   var proposed: Int = -1;
-  var greatestInstance: Int = 0; 
+  var greatestInstance: Int = -1; 
   var learnedInstances: IRange = IRange() 
 
   var coordinators: Set[ActorRef] = Set()
