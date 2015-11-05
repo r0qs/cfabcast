@@ -15,7 +15,7 @@ import akka.actor.OneForOneStrategy
 
 //import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
-import scala.collection.immutable.Set
+import scala.collection.immutable.{ Set, Map }
 
 import cfabcast.messages._
 import cfabcast.agents._
@@ -41,9 +41,9 @@ class Node extends Actor with ActorLogging {
   log.info(s"NODE AGENTS: ${nodeAgents}")
 
   // Agents of the protocol
-  var proposers = MMap.empty[AgentId, ActorRef]
-  var acceptors = MMap.empty[AgentId, ActorRef]
-  var learners  = MMap.empty[AgentId, ActorRef]
+  var proposers = Map.empty[AgentId, ActorRef]
+  var acceptors = Map.empty[AgentId, ActorRef]
+  var learners  = Map.empty[AgentId, ActorRef]
 
   // Associated clients
   var clients = Set.empty[ActorRef]
@@ -52,15 +52,15 @@ class Node extends Actor with ActorLogging {
   var servers = Set.empty[ActorRef]
 
   for((name, id) <- proposersIds) {
-    proposers(id) = context.actorOf(ProposerActor.props(id), name=s"$name") 
+    proposers += (id -> context.actorOf(ProposerActor.props(id), name=s"$name")) 
   }
 
   for ((name, id) <- learnersIds) {
-    learners(id) = context.actorOf(LearnerActor.props(id), name=s"$name") 
+    learners += (id -> context.actorOf(LearnerActor.props(id), name=s"$name"))
   }
 
   for ((name, id) <- acceptorsIds) {
-    acceptors(id) = context.actorOf(AcceptorActor.props(id), name=s"$name") 
+    acceptors += (id -> context.actorOf(AcceptorActor.props(id), name=s"$name"))
   }
   
   log.info(s"PROPOSERS: ${proposers}")

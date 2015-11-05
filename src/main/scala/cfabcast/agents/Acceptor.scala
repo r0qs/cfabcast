@@ -41,7 +41,7 @@ trait Acceptor extends ActorLogging {
       if (oldState.rnd <= msg.rnd && msg.value.get(msg.senderId) != Nil) {
         log.debug(s"INSTANCE: ${msg.instance} - ROUND: ${msg.rnd} - PHASE2B2 - ${id} Cond2 satisfied with msg VALUE: ${msg.value}")
         // FIXME: Is thread-safe do this!?
-        var value = VMap[Values]()
+        var value = VMap[AgentId, Values]()
         if (oldState.vrnd < msg.rnd || oldState.vval == None) {
           // extends value and put Nil for all proposers
           value = msg.value.get

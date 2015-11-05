@@ -60,7 +60,7 @@ trait Proposer extends ActorLogging {
     if (msg.value.get.contains(msg.senderId)) {
       if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None && msg.value.get(msg.senderId) != Nil) {
         // TODO update proposed counter
-        val nil = Some(VMap[Values](id -> Nil))
+        val nil = Some(VMap[AgentId, Values](id -> Nil))
         (config.learners.values).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, nil))
         val newState = oldState.copy(pval = nil)
         log.debug(s"INSTANCE: ${msg.instance} - PHASE2A - ${id} fast-propose NIL because receive 2A from: ${msg.senderId}")
@@ -82,17 +82,17 @@ trait Proposer extends ActorLogging {
     if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && oldState.cval == None) {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
       val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
-      val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[Values]]) => e)
+      val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[AgentId, Values]]) => e)
       log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ROUND: ${msg.rnd} - S= ${S}")
       if(S.isEmpty) {
-        val newState = oldState.copy(cval = Some(VMap[Values]())) //Bottom vmap
-        config.proposers.values.foreach(_ ! Msg2S(id, msg.instance, msg.rnd, Some(VMap[Values]())))
+        val newState = oldState.copy(cval = Some(VMap[AgentId, Values]())) //Bottom vmap
+        config.proposers.values.foreach(_ ! Msg2S(id, msg.instance, msg.rnd, Some(VMap[AgentId, Values]())))
         log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${id} nothing accepted yet in ROUND: ${msg.rnd}")
         newState
       } else {
-        var value = VMap[Values]()
+        var value = VMap[AgentId, Values]()
         for (p <- config.proposers.keys) value += (p -> Nil) 
-        val cval: VMap[Values] = value ++: VMap.lub(S) //preserve S values
+        val cval: VMap[AgentId, Values] = value ++: VMap.lub(S) //preserve S values
         val newState = oldState.copy(cval = Some(cval))
         (config.proposers.values.toSet union config.acceptors.values.toSet).foreach(_ ! Msg2S(id, msg.instance, msg.rnd, Some(cval)))
         log.debug(s"INSTANCE: ${msg.instance} - PHASE2START - ${id} appended value: ${cval} in ROUND: ${msg.rnd}")
@@ -161,7 +161,7 @@ trait Proposer extends ActorLogging {
             }
             log.info("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
             // If not proposed and not learned nothing yet in this instance
-            val vmap: Option[VMap[Values]] = Some(VMap(id -> value))
+            val vmap: Option[VMap[AgentId, Values]] = Some(VMap(id -> value))
             var instance = learnedInstances.next
             if (!learnedInstances.contains(proposed)) {
               instance = proposed

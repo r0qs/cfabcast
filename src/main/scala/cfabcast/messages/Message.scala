@@ -9,23 +9,23 @@ import cfabcast._
 sealed class Message extends Serializable
 
 // Message sent by proposer p to the collision-fast proposer for the current round of p.
-case class Proposal(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Proposal(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[AgentId, Values]]) extends Message
 
 // Message sent by coordinator c to all acceptors.
 case class Msg1A(senderId: AgentId, instance: Instance, rnd: Round) extends Message
 case class Msg1Am(senderId: AgentId, rnd: Round) extends Message
 
 // Message sent by acceptor a to the coordinator of round rnd.
-case class Msg1B(senderId: AgentId, instance: Instance, rnd: Round, vrnd: Round, vval: Option[VMap[Values]]) extends Message
+case class Msg1B(senderId: AgentId, instance: Instance, rnd: Round, vrnd: Round, vval: Option[VMap[AgentId, Values]]) extends Message
 
 // Message sent by coordinator to all proposers and/or acceptors.
-case class Msg2S(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Msg2S(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[AgentId, Values]]) extends Message
 
 // Message sent by collision-fast proposer cfp to all acceptors and others collision-fast proposers on the same round rnd.
-case class Msg2A(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Msg2A(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[AgentId, Values]]) extends Message
 
 // Message sent by acceptor a to all learners.
-case class Msg2B(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[Values]]) extends Message
+case class Msg2B(senderId: AgentId, instance: Instance, rnd: Round, value: Option[VMap[AgentId, Values]]) extends Message
 
 // Message sent by learners to all Agents if something was learned.
 case object Learn extends Message
@@ -41,8 +41,8 @@ case class TryPropose(value: Values) extends Message
 
 case object GetCFPs extends Message
 
-case class Learned(instance: Instance, vmap: Option[VMap[Values]]) extends Message
-case class DeliveredVMap(vmap: Option[VMap[Values]]) extends Message
+case class Learned(instance: Instance, vmap: Option[VMap[AgentId, Values]]) extends Message
+case class DeliveredVMap(vmap: Option[VMap[AgentId, Values]]) extends Message
 
 case object GetState extends Message
 case object GetIntervals extends Message
