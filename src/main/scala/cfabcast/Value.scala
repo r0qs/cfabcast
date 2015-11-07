@@ -25,10 +25,10 @@ class Value private extends Values {
   
   def canEqual(other : Any) : Boolean = other.isInstanceOf[Value]
   
-  override def toString: String = {
+  /*override def toString: String = {
     val v = this.value.getOrElse(Array[Byte]())
     if(v == null) "None" else java.util.Arrays.asList(v:_*).toString
-  }
+  }*/
 }
 
 object Value {

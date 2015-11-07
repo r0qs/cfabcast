@@ -15,84 +15,103 @@ import akka.actor._
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def learn(instance: Instance, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = async {
-    val oldState = await(state)
+  def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta])(implicit ec: ExecutionContext): Future[LearnerMeta] = 
+    async {
+      val oldState = await(state)
+      val pSet = pPerInstance.getOrElse(instance, Set()) 
+      if(quorumed.nonEmpty) {
+        val newState = learn(instance, oldState, quorumed, pSet)
+        newState
+      } else {
+        log.debug("INSTANCE: {} - MSG2B - {} Quorum requirements not satisfied: {}", instance, id, quorumed)
+        oldState
+      }   
+    }
+
+  def learn(instance: Instance, oldState: LearnerMeta, quorumed: VMap[AgentId, Values], pSet: Set[AgentId]): LearnerMeta = {
     // TODO: verify learner round!?
-    // FIXME: It's better pass quorum and pSet to learn function?
-    val quorum = quorumPerInstance.getOrElse(instance, Map())
-    val pSet = pPerInstance.getOrElse(instance, Set()) 
-    log.debug(s"INSTANCE: ${instance} - MSG2B - Quorum in ${id} is ${quorum} size ${quorum.size}")
-    if (quorum.size >= config.quorumSize) {
-      val Q2bVals = quorum.values.toList
-      // FIXME: Not assign mutable vmap to a var, use immutable instead
-      var value = VMap[AgentId, Values]()
-      log.debug(s"INSTANCE: ${instance} - LEARN - ${id} - P: ${pSet}")
-      for (p <- pSet) value += (p -> Nil)
-      log.debug(s"INSTANCE: ${instance} - LEARN - ${id} - value with nil: ${value}")
-      val w: VMap[AgentId, Values] = VMap.glb(Q2bVals) ++ value
-      log.debug(s"INSTANCE: ${instance} - LEARN - ${id} - GLB of ${Q2bVals} + ${value} = ${w}")
-      // TODO: Speculative execution
-      // TODO: isCompatible
-      val Slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, w)
-      log.debug(s"INSTANCE: ${instance} - LEARN - ${id} - Slub: ${Slub}")
-      val lubVals: VMap[AgentId, Values] = VMap.lub(Slub)
-      val newState = oldState.copy(learned = Some(lubVals))
-      log.debug(s"INSTANCE: ${instance} - LEARNER: ${id} - LEARNED: ${newState.learned} OLD: ${oldState.learned}")
-      //FIXME Find a better way to verify this!
-      if (newState.learned.get.size > oldState.learned.get.size) {
-        // The vmap was extented, notify the new values decided
-        // Conservative deliver a complete vmap
-        log.debug("Extending VMAP... domain:{} newState.domain: {}", domain, newState.learned.get.domain)
-        if (newState.learned.get.isComplete(domain)) {
-          context.actorSelection("../proposer*") ! Learned(instance, newState.learned)
-          context.parent ! DeliveredVMap(newState.learned)
-          try {
-            instancesLearned = instancesLearned.insert(instance)
-          } catch {
-            case e: ElementAlreadyExistsException => 
-              log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
-          }
-        }
-        //TODO else pre-learned
+    var value = VMap[AgentId, Values]()
+    for (p <- pSet) value += (p -> Nil)
+    val w: VMap[AgentId, Values] = quorumed ++ value
+    // TODO: isCompatible
+    val slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, w)
+    val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
+    log.debug("Quorumed: {} \nW: {}, \nSlub: {} \nlub:{}", quorumed, w, slub, lubVals)
+    val newState = oldState.copy(learned = Some(lubVals))
+    // if the learned vmap was extented, notify the new values decided
+    if (newState.learned.get.size > oldState.learned.get.size) {
+      // Conservative deliver a complete vmap
+      log.debug("DOMAIN:{} - Learned value was extended FROM: {} TO {}", domain, oldState.learned.get, newState.learned.get)
+      val notDelivered = quorumPerInstance(instance).existsNotDeliveredValue
+      if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
+        w.foreach({ case (_ , value) => 
+          deliver(instance, Some(w))
+        })
+      } else if (newState.learned.get.isComplete(domain) && notDelivered) {
+        // Default policy
+        deliver(instance, newState.learned)
       }
       newState
     } else { 
-      //TODO super optimistic delivery
-      log.debug(s"INSTANCE: ${instance} - MSG2B - ${id} Quorum requirements not satisfied: ${quorum.size}")
       oldState
     }
+  }
+
+  def deliver(instance: Instance, learned: Option[VMap[AgentId, Values]]): Unit = {
+      log.debug("INSTANCE: {} -- {} deliver of: {}", instance, settings.DeliveryPolicy, learned)
+      //FIXME: Is this thread-safe?
+      var quorum = quorumPerInstance(instance)
+      learned.get.foreach({ case(proposerId, value) => 
+        var vote = quorum.get(proposerId).get
+        if (vote.delivered == false)
+          quorum += (proposerId -> vote.copy(delivered = true))
+      })
+      quorumPerInstance += (instance -> quorum)
+      context.actorSelection("../proposer*") ! Learned(instance, learned)
+      context.parent ! DeliveredVMap(learned)
+      try {
+        instancesLearned = instancesLearned.insert(instance)
+      } catch {
+        case e: ElementAlreadyExistsException => 
+          log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${learned}")
+      }
   }
 
   // FIXME: Clean quorums when receive msgs from all agents of the instance
   def learnerBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
 
     case msg: Msg2A =>
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
+      log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       if (msg.value.get.contains(msg.senderId)) {
         if (msg.value.get(msg.senderId) == Nil && msg.rnd.cfproposers(sender)) {
           val p = pPerInstance.getOrElse(msg.instance, Set())
           pPerInstance += (msg.instance -> (p + msg.senderId))
-          log.debug(s"INSTANCE: ${msg.instance} - MSG2A - ${id} add ${msg.senderId} to pPerInstance ${pPerInstance(msg.instance)}")
           val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
-          context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
+          val quorum = quorumPerInstance.getOrElse(msg.instance, Quorum[AgentId, Vote]())
+          val decidedVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
+          context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(decidedVals, msg.instance, state))))
         }
       } else {
         log.error(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
       }
 
     case msg: Msg2B =>
-      log.debug(s"INSTANCE: ${msg.instance} - ${id} receive ${msg} from ${msg.senderId}")
+      log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       //FIXME: Implement quorum as a prefix tree
-      val q = quorumPerInstance.getOrElse(msg.instance, Map())
-      val vm: VMap[AgentId, Values] = q.getOrElse(msg.senderId, VMap[AgentId, Values]())
+      var quorum = quorumPerInstance.getOrElse(msg.instance, Quorum[AgentId, Vote]())
+      val receivedVMap = msg.value.get
+      log.debug("INSTANCE: {} Using policy: {}, with quorum: {}", msg.instance, settings.DeliveryPolicy, quorum)
+      receivedVMap.foreach({ case (proposerId, value) =>
+        quorum = quorum.vote(proposerId, msg.senderId, VMap(proposerId -> value))
+        val pq = quorum.get(proposerId).get
+        if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorumPerInstance(msg.instance).existsNotDeliveredValue)
+          deliver(msg.instance, Some(pq.value))
+      })
+      val q2bVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
       // Replaces values proposed previously by the same proposer on the same instance
-      // FIXME: override ++ in vmap?
-      // ++: differs from ++ in that the right operand determines the type of the resulting
-      // collection rather than the left one. Mnemonic: the COLon is on the side of the new COLlection type.
-      quorumPerInstance += (msg.instance -> (q ++ Map(msg.senderId -> (vm ++: msg.value.get))))
-      log.debug(s"INSTANCE: ${msg.instance} - MSG2B - ${id} add to ${msg.senderId} in INSTANCE ${msg.instance} value: ${msg.value.get} to VMap: ${vm} in quorum")
+      quorumPerInstance += (msg.instance -> quorum)
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
-      context.become(learnerBehavior(config, instances + (msg.instance -> learn(msg.instance, state, config))))
+      context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(q2bVals, msg.instance, state))))
 
     case GetIntervals =>
       sender ! TakeIntervals(instancesLearned)
@@ -113,11 +132,13 @@ trait Learner extends ActorLogging {
 }
 
 class LearnerActor(val id: AgentId) extends Actor with Learner {
+  val settings = Settings(context.system)
   var domain = Set.empty[AgentId]
   var instancesLearned: IRange = IRange()
-  var quorumPerInstance = Map.empty[Instance, Map[AgentId, VMap[AgentId, Values]]]
+  // Map(instance, Quorum(proposerId, Vote(count, acceptors vmap))
+  var quorumPerInstance = Map.empty[Instance, Quorum[AgentId, Vote]]
   var pPerInstance = Map.empty[Instance, Set[AgentId]]
-  
+
   override def preStart(): Unit = {
     log.info("Learner ID: {} UP on {}", id, self.path)
   }

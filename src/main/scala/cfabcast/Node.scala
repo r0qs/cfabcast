@@ -191,7 +191,7 @@ class Node extends Actor with ActorLogging {
         log.debug("Received learned vmap from {} with Values = {} ", sender, vmap)
         servers.foreach( server => { 
           log.debug("Sending response to server: {} ", server)
-          vmap.foreach({case (pid, value) =>
+          vmap.foreach({case (_ , value) =>
             value match {
               case values: Value =>
                 val response = values.value.getOrElse(Array[Byte]())

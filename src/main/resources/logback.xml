@@ -32,7 +32,6 @@
     <!-- Console output -->
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <!--<pattern>%-5level %logger{36} - %msg%n</pattern>-->
             <pattern>%date{ISO8601} %-5level %logger{36} %X{sourceThread} %X{akkaSource} - %msg%n</pattern>
         </encoder>
         <filter class="ch.qos.logback.classic.filter.ThresholdFilter">

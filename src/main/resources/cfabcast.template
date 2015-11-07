@@ -111,6 +111,12 @@ cfabcast {
   # (nr-of-acceptors / 2) + 1
   quorum-size = 2
 
+  # Select one of different kinds of deliveries. The options are:
+  # "conservative" : only deliver the value map when vmap is complete(all values have a quorum)
+  # "optimistic": deliver each single map when possible(each value have a quorum)
+  # "super-optimistic": deliver the single map when become aware of it (no quorum)
+  delivery-policy = "conservative"
+
   role {
     # Minimum required number of agents of a certain role before start the protocol
     # E.g. to require 2 agents with role 'cfproposer':

@@ -27,6 +27,8 @@ class CFABCastSettings(config: Config) extends Extension {
     cc.getInt("quorum-size")
   } requiring (_ > 0, "quorum-size must be > 0")
 
+  val DeliveryPolicy: String = cc.getString("delivery-policy")
+
   val MinNrOfAgentsOfRole: Map[String, Int] = {
     import scala.collection.JavaConverters._
     cc.getConfig("role").root.asScala.collect {
