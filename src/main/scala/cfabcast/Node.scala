@@ -1,6 +1,6 @@
 package cfabcast
 
-import akka.cluster.{ Member, Cluster }
+import akka.cluster.{ Member, Cluster, MemberStatus }
 import akka.actor.{ Actor, ActorRef, ActorSystem }
 import akka.actor.{ Address, ActorPath, ActorIdentity, Identify, RootActorPath }
 import akka.actor.Props
@@ -94,7 +94,7 @@ class Node extends Actor with ActorLogging {
     cluster.unsubscribe(self)
   }
 
-  def memberPath(address: Address): ActorPath = RootActorPath(address) / "user" / "*"
+  def memberPath(address: Address): ActorPath = RootActorPath(address) / "user" / "node"
   
   def notifyAll(config: ClusterConfiguration) = {
     for (p <- proposers.values if !proposers.isEmpty) { p ! UpdateConfig(config) }
@@ -205,9 +205,15 @@ class Node extends Actor with ActorLogging {
 
     case state: CurrentClusterState =>
       log.info("Current members: {}", state.members)
+      nodes = state.members.collect {
+        case m if m.status == MemberStatus.Up => m.address
+      }
 
-    case MemberUp(member) if !(nodes.contains(member.address)) => register(member)
-    
+    case MemberUp(member) =>
+      log.info("Member is Up: {}. {} nodes in cluster", member.address, nodes.size)
+      if (!nodes.contains(member.address)) {
+        register(member)
+      }
     // Return the ActorRef of a member node
     case ActorIdentity(member: Member, Some(ref)) =>
       if (member.hasRole("cfabcast")) {

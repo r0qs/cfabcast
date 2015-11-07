@@ -14,6 +14,8 @@ class Quorum[A, B <: Vote](var quorum: Map[A, Vote]) {
     Quorum(quorum)
   }
 
+  def +=(that: Map[A, Vote]) = quorum ++ that
+
   def getQuorumed(quorumSize: Int): List[VMap[AgentId, Values]] = {
     var acceptedValues: List[VMap[AgentId, Values]] = List()
     quorum.foreach({ 
@@ -25,7 +27,7 @@ class Quorum[A, B <: Vote](var quorum: Map[A, Vote]) {
     acceptedValues
   }
  
-  def existsNotDeliveredValue: Boolean = quorum.exists({ case(_, v) => v.delivered == true })
+  def existsNotDeliveredValue: Boolean = quorum.exists({ case(_, v) => v.delivered == false })
 
 
   def empty =  new Quorum[A, Vote](quorum.empty)

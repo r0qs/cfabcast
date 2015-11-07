@@ -41,11 +41,20 @@ trait Learner extends ActorLogging {
     // if the learned vmap was extented, notify the new values decided
     if (newState.learned.get.size > oldState.learned.get.size) {
       // Conservative deliver a complete vmap
-      log.debug("DOMAIN:{} - Learned value was extended FROM: {} TO {}", domain, oldState.learned.get, newState.learned.get)
+      //FIXME: This ins't thread-safe
+     /* try {
+        instancesLearned = instancesLearned.insert(instance)
+      } catch {
+        case e: ElementAlreadyExistsException => 
+          log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
+      }*/
       val notDelivered = quorumPerInstance(instance).existsNotDeliveredValue
+      log.debug("DOMAIN:{} - Learned value was extended FROM: {} TO {} and NOT-DELIVERY FLAG: {}", domain, oldState.learned.get, newState.learned.get, notDelivered)
       if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
-        w.foreach({ case (_ , value) => 
-          deliver(instance, Some(w))
+        w.foreach({ case (proposerId , value) =>
+          log.debug("Try to deliver value: ({} -> {})", proposerId, value)
+          if (value != Nil)
+            deliver(instance, Some(VMap(proposerId -> value)))
         })
       } else if (newState.learned.get.isComplete(domain) && notDelivered) {
         // Default policy
@@ -58,23 +67,20 @@ trait Learner extends ActorLogging {
   }
 
   def deliver(instance: Instance, learned: Option[VMap[AgentId, Values]]): Unit = {
-      log.debug("INSTANCE: {} -- {} deliver of: {}", instance, settings.DeliveryPolicy, learned)
-      //FIXME: Is this thread-safe?
-      var quorum = quorumPerInstance(instance)
-      learned.get.foreach({ case(proposerId, value) => 
-        var vote = quorum.get(proposerId).get
-        if (vote.delivered == false)
-          quorum += (proposerId -> vote.copy(delivered = true))
-      })
-      quorumPerInstance += (instance -> quorum)
+      log.debug("INSTANCE: {} -- {} deliver of: {} QPI before: {}", instance, settings.DeliveryPolicy, learned, quorumPerInstance)
+      //FIXME: Make this thread-safe
+      if (settings.DeliveryPolicy != "super-optimistic") {
+        var quorum = quorumPerInstance(instance)
+        learned.get.foreach({ case(proposerId, value) => 
+          var vote = quorum.get(proposerId).get
+          if (vote.delivered == false)
+            quorum += Map(proposerId -> vote.copy(delivered = true))
+        })
+        quorumPerInstance += (instance -> quorum)
+        log.debug("INSTANCE: {} -- QPI after: {}", instance, quorumPerInstance)
+      }
       context.actorSelection("../proposer*") ! Learned(instance, learned)
       context.parent ! DeliveredVMap(learned)
-      try {
-        instancesLearned = instancesLearned.insert(instance)
-      } catch {
-        case e: ElementAlreadyExistsException => 
-          log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${learned}")
-      }
   }
 
   // FIXME: Clean quorums when receive msgs from all agents of the instance
@@ -104,7 +110,7 @@ trait Learner extends ActorLogging {
       receivedVMap.foreach({ case (proposerId, value) =>
         quorum = quorum.vote(proposerId, msg.senderId, VMap(proposerId -> value))
         val pq = quorum.get(proposerId).get
-        if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorumPerInstance(msg.instance).existsNotDeliveredValue)
+        if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorum.existsNotDeliveredValue)
           deliver(msg.instance, Some(pq.value))
       })
       val q2bVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
