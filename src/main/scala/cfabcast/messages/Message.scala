@@ -43,6 +43,7 @@ case object GetCFPs extends Message
 
 case class Learned(instance: Instance, vmap: Option[VMap[AgentId, Values]]) extends Message
 case class DeliveredVMap(vmap: Option[VMap[AgentId, Values]]) extends Message
+case class Deliver(instance: Instance, proposerId: AgentId, learned: Option[VMap[AgentId, Values]]) extends Message
 
 case object GetState extends Message
 case object GetIntervals extends Message

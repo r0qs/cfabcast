@@ -6,7 +6,6 @@ import scala.collection.generic.{ CanBuildFrom, ImmutableMapFactory}
 import java.io._
 import scala.collection.GenTraversableOnce
 
-//TODO: Improve this!
 abstract class Values extends Serializable {
   type T
   val value: T
@@ -25,12 +24,13 @@ class Value private extends Values {
   
   def canEqual(other : Any) : Boolean = other.isInstanceOf[Value]
   
-  /*override def toString: String = {
+  override def toString: String = {
     val v = this.value.getOrElse(Array[Byte]())
     if(v == null) "None" else java.util.Arrays.asList(v:_*).toString
-  }*/
+  }
 }
 
+//TODO: make this generic
 object Value {
   def apply(v: Option[Array[Byte]]) = new Value { override val value = v }
   def apply() = new Value()
@@ -57,7 +57,7 @@ class VMap[A, +B] private(val underlying: Map[A, B])
 
   def iterator = underlying.iterator
 
-  def isSingleMap: Boolean = this.size == 1
+  def isSingleMap: Boolean = underlying.size == 1
 
   // A empty VMap is a bottom one.
   override def empty: VMap[A, B] = new VMap[A, B](underlying.empty)
@@ -124,6 +124,3 @@ object VMap extends ImmutableMapFactory[VMap] {
   def lub[A, B](s: List[VMap[A, B]]) = fromList[A, B](s.flatten)
   
 }
-
-
-//TODO: Define CStruct as Option[VMap[Values]]
