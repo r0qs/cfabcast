@@ -20,7 +20,7 @@ class Quorum[A, B <: Vote](var quorum: TrieMap[A, Vote]) {
     var acceptedValues: List[VMap[AgentId, Values]] = List()
     quorum.foreach({ 
       case (proposerId, vote) => 
-        if (vote.count >= quorumSize && vote.delivered == false) {
+        if (vote.count >= quorumSize) { //&& vote.delivered == false) {
           acceptedValues = acceptedValues :+ vote.value
         }
     })

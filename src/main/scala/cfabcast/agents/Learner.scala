@@ -18,50 +18,36 @@ trait Learner extends ActorLogging {
   def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta])(implicit ec: ExecutionContext): Future[LearnerMeta] = 
     async {
       val oldState = await(state)
-      val pSet = pPerInstance.getOrElse(instance, Set()) 
       if(quorumed.nonEmpty) {
-        val newState = learn(instance, oldState, quorumed, pSet)
+        val slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, quorumed)
+        // TODO: verify if oldState.learned.get.isCompatible(quorumed.domain)
+        val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
+        val newState = oldState.copy(learned = Some(lubVals))
+        if (newState.learned.get.size > oldState.learned.get.size) {
+            //FIXME: This ins't thread-safe
+            /* try {
+              instancesLearned = instancesLearned.insert(instance)
+            } catch {
+            case e: ElementAlreadyExistsException => 
+              log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
+            }*/
+          val notDelivered = quorumPerInstance.getOrElse(instance, Quorum[AgentId, Vote]()).existsNotDeliveredValue
+          if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
+            quorumed.foreach({ case (proposerId , value) =>
+              if (value != Nil)
+                self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
+            })
+          } else if (newState.learned.get.isComplete(domain) && notDelivered) {
+            // Default policy
+            deliver(instance, newState.learned)
+          }
+        } 
         newState
       } else {
         log.debug("INSTANCE: {} - MSG2B - {} Quorum requirements not satisfied: {}", instance, id, quorumed)
         oldState
       }   
     }
-
-  def learn(instance: Instance, oldState: LearnerMeta, quorumed: VMap[AgentId, Values], pSet: Set[AgentId]): LearnerMeta = {
-    // TODO: verify learner round!?
-    var value = VMap[AgentId, Values]()
-    for (p <- pSet) value += (p -> Nil)
-    val w: VMap[AgentId, Values] = quorumed ++ value
-    // TODO: isCompatible
-    val slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, w)
-    val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
-    val newState = oldState.copy(learned = Some(lubVals))
-    // if the learned vmap was extented, notify the new values decided
-    if (newState.learned.get.size > oldState.learned.get.size) {
-      // Conservative deliver a complete vmap
-      //FIXME: This ins't thread-safe
-     /* try {
-        instancesLearned = instancesLearned.insert(instance)
-      } catch {
-        case e: ElementAlreadyExistsException => 
-          log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
-      }*/
-      val notDelivered = quorumPerInstance(instance).existsNotDeliveredValue
-      if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
-        w.foreach({ case (proposerId , value) =>
-          if (value != Nil)
-            self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
-        })
-      } else if (newState.learned.get.isComplete(domain) && notDelivered) {
-        // Default policy
-        deliver(instance, newState.learned)
-      }
-      newState
-    } else { 
-      oldState
-    }
-  }
 
   def deliver(instance: Instance, learned: Option[VMap[AgentId, Values]]): Unit = {
     learned.get.foreach({ case(proposerId, _) => 
@@ -91,12 +77,12 @@ trait Learner extends ActorLogging {
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       if (msg.value.get.contains(msg.senderId)) {
         if (msg.value.get(msg.senderId) == Nil && msg.rnd.cfproposers(sender)) {
-          val p = pPerInstance.getOrElse(msg.instance, Set())
-          pPerInstance += (msg.instance -> (p + msg.senderId))
+          val p = pPerInstance.getOrElse(msg.instance, VMap[AgentId, Values]())
+          // FIXME: verify if msg.value is None
+          pPerInstance += (msg.instance -> (p ++ msg.value.get))
           val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
-          val quorum = quorumPerInstance.getOrElse(msg.instance, Quorum[AgentId, Vote]())
-          val decidedVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
-          context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(decidedVals, msg.instance, state))))
+          val nilVmaps = pPerInstance(msg.instance)
+          context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(nilVmaps, msg.instance, state))))
         }
       } else {
         log.error(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
@@ -114,19 +100,20 @@ trait Learner extends ActorLogging {
         if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorum.existsNotDeliveredValue)
           self ! Deliver(msg.instance, proposerId, Some(pq.value))
       })
-      val q2bVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
+      val decidedVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
       // Replaces values proposed previously by the same proposer on the same instance
       quorumPerInstance += (msg.instance -> quorum)
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
-      context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(q2bVals, msg.instance, state))))
+      context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(decidedVals, msg.instance, state))))
 
     case GetIntervals =>
       sender ! TakeIntervals(instancesLearned)
 
     case GetState =>
       instances.foreach({case (instance, state) => 
-        state onSuccess {
-          case s => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
+        state onComplete {
+          case Success(s) => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
+          case Failure(f) => log.error("INSTANCE: {} -- {} -- FUTURE FAIL: {}", instance, id, f)
         }
       })
 
@@ -144,7 +131,7 @@ class LearnerActor(val id: AgentId) extends Actor with Learner {
   var instancesLearned: IRange = IRange()
   // TrieMap(instance, Quorum(proposerId, Vote(count, acceptors vmap))
   var quorumPerInstance = TrieMap.empty[Instance, Quorum[AgentId, Vote]]
-  var pPerInstance = TrieMap.empty[Instance, Set[AgentId]]
+  var pPerInstance = TrieMap.empty[Instance, VMap[AgentId, Values]]
 
   override def preStart(): Unit = {
     log.info("Learner ID: {} UP on {}", id, self.path)
