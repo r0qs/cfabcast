@@ -191,8 +191,9 @@ trait Proposer extends ActorLogging {
     case GetState =>
       //TODO: async here!
       instances.foreach({case (instance, state) => 
-        state onSuccess {
-          case s => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
+        state onComplete {
+          case Success(s) => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
+          case Failure(f) => log.error("INSTANCE: {} -- {} -- FUTURE FAIL: {}", instance, id, f)
         }
       })
  

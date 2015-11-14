@@ -79,4 +79,3 @@ case class ProposerSet(replyTo: ActorRef, proposersRef: Set[ActorRef]) extends M
 sealed class ConsoleMsg
 case object StartConsole extends ConsoleMsg
 case class Command(cmd: String) extends ConsoleMsg
-
