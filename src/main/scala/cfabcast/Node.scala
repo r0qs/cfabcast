@@ -38,7 +38,7 @@ class Node extends Actor with ActorLogging {
   val acceptorsIds = settings.AcceptorIdsByName
   val protocolRoles = settings.ProtocolRoles
   
-  log.info(s"NODE AGENTS: ${nodeAgents}")
+  log.info("NODE AGENTS: {}", nodeAgents)
 
   // Agents of the protocol
   var proposers = Map.empty[AgentId, ActorRef]
@@ -63,9 +63,9 @@ class Node extends Actor with ActorLogging {
     acceptors += (id -> context.actorOf(AcceptorActor.props(id), name=s"$name"))
   }
   
-  log.info(s"PROPOSERS: ${proposers}")
-  log.info(s"ACCEPTORS: ${acceptors}")
-  log.info(s"LEARNERS: ${learners}")
+  log.info("PROPOSERS: {}", proposers)
+  log.info("ACCEPTORS: {}", acceptors)
+  log.info("LEARNERS:  {}", learners)
 
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
@@ -81,7 +81,7 @@ class Node extends Actor with ActorLogging {
 
   val myConfig = ClusterConfiguration(quorumSize, proposers, acceptors, learners)
 
-  log.info(s"Registering Recepcionist on node: $nodeId")
+  log.info("Registering Recepcionist on node: {}", nodeId)
   ClusterReceptionistExtension(context.system).registerService(self)
 
   // Subscribe to cluster changes, MemberUp
@@ -128,17 +128,17 @@ class Node extends Actor with ActorLogging {
     clients += client
     val group = getBroadcastGroup
     val proposer = getRandomAgent(proposers.values.toVector)
-    log.info(s"Registering client: ${client} with proposer: ${proposer}")
+    log.info("Registering client: {} with proposer: {}", client, proposer)
     if (proposer != None)
       client ! ClientRegistered(proposer.get, group)
     else
-      log.error(s"${self} does not have a proposer: ${proposer}!")
+      log.error("{} does not have a proposer: {}!", self, proposer)
   }
 
   def registerServer(server: ActorRef): Unit = {
     servers += server
     val learner = getRandomAgent(learners.values.toVector)
-    log.info(s"Registering server: ${server} with learner: ${learner}")
+    log.info("Registering server: {} with learner: {}", server, learner)
 //    learner ! ReplyLearnedValuesTo(server)
   }
 
@@ -172,7 +172,7 @@ class Node extends Actor with ActorLogging {
             val data = serializer.toBinary(cmd)
             proposers.values.toVector(Random.nextInt(proposers.size)) ! Broadcast(data)
           } else {
-            log.info(s"Ops!! This node [${nodeId}] don't have a proposer to handle commands.")
+            log.info("Ops!! This node [{}] don't have a proposer to handle commands.", nodeId)
           }
       }
 
@@ -181,7 +181,7 @@ class Node extends Actor with ActorLogging {
 
     case msg: RegisterServer => registerServer(msg.server)
 
-    case TakeIntervals(interval) => log.info(s"Learner ${sender} learned in instances: ${interval}") 
+    case TakeIntervals(interval) => log.info("Learner {} learned in instances: {}", sender, interval) 
 
     case msg: DeliveredVMap =>
       val vmap = msg.vmap.get

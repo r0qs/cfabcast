@@ -12,6 +12,7 @@ import cfabcast.messages._
 object Main {
   def main(args: Array[String]): Unit = {
     Kamon.start()
+
     val nodeName = args(0)
     val defaultConfig = ConfigFactory.load()
 

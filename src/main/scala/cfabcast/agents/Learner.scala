@@ -70,7 +70,7 @@ trait Learner extends ActorLogging {
         context.parent ! DeliveredVMap(learned)
       }
       else {
-        log.debug("VMap: {} - Already delivered!",learned)
+        log.warning("VMap: {} - Already delivered!",learned)
       }
 
     case msg: Msg2A =>
@@ -85,12 +85,11 @@ trait Learner extends ActorLogging {
           context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(nilVmaps, msg.instance, state))))
         }
       } else {
-        log.error(s"INSTANCE: ${msg.instance} - ${id} value ${msg.value.get} not contain ${msg.senderId}")
+        log.error("INSTANCE: {} - {} value {} not contain {}", msg.instance, id, msg.value.get, msg.senderId)
       }
 
     case msg: Msg2B =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
-      //FIXME: Implement quorum as a prefix tree
       var quorum = quorumPerInstance.getOrElse(msg.instance, Quorum[AgentId, Vote]())
       val receivedVMap = msg.value.get
       log.debug("INSTANCE: {} Using policy: {}, with quorum: {}", msg.instance, settings.DeliveryPolicy, quorum)
