@@ -1,6 +1,7 @@
 package cfabcast
 
 import scala.util.control.Exception
+import scala.annotation.tailrec
 
 case class ElementAlreadyExistsException(e: String) extends Exception(e)
 
@@ -16,16 +17,17 @@ class IRange(self: List[Interval]) extends Iterable[Interval]
   override def isEmpty = self.isEmpty
 
   override def nonEmpty = !self.isEmpty
- 
+  
+  //FIXME: improve this!
   def insert(elem: Int): IRange = {
-    def tryInsert(elem: Int, in: List[Interval]): List[Interval] = in match {
+    @tailrec
+    def tryInsert(elem: Int, in: List[Interval], out: List[Interval]): List[Interval] = in match {
       case x::xs =>
-        if(x contains elem) //in
-          throw new ElementAlreadyExistsException(s"Element ${elem} already exists on the interval ${x}.")
+        if(x contains elem) out ++ in 
         else if(elem < x.from) {
           x.from - elem match {
-            case 1 => Interval(elem, x.to) :: xs
-            case _ => List(Interval(elem)) ::: x :: xs
+            case 1 => out ::: Interval(elem, x.to) :: xs
+            case _ => out ::: List(Interval(elem)) ::: x :: xs
           }
         }
         else if(elem > x.to) {
@@ -33,19 +35,19 @@ class IRange(self: List[Interval]) extends Iterable[Interval]
             case 1 => 
               if (xs.nonEmpty) {
                 xs.head.from - elem match {
-                  case 1 => Interval(x.from, xs.head.to) :: xs.tail
-                  case _ => Interval(x.from, elem) :: xs
+                  case 1 => out ::: Interval(x.from, xs.head.to) :: xs.tail
+                  case _ => out ::: Interval(x.from, elem) :: xs
                 }
               } else {
-                Interval(x.from, elem) :: xs
+                out ::: Interval(x.from, elem) :: xs
               }
-            case _ => x :: tryInsert(elem, xs)
+            case _ => tryInsert(elem, xs, out :+ x)
           }
         }
-        else tryInsert(elem, xs)
-      case List() => List(Interval(elem))
+        else tryInsert(elem, xs, out)
+      case List() => out ++ List(Interval(elem))
     }
-    new IRange(tryInsert(elem, self))
+    new IRange(tryInsert(elem, self, List()))
   }
 
   def contains(elem: Int): Boolean =
