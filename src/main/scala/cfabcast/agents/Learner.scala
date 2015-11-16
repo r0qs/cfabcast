@@ -34,7 +34,7 @@ trait Learner extends ActorLogging {
           val notDelivered = quorumPerInstance.getOrElse(instance, Quorum[AgentId, Vote]()).existsNotDeliveredValue
           if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
             quorumed.foreach({ case (proposerId , value) =>
-              if (value != Nil)
+              if (value != Nil) //TODO: only do this if the value was not delivered
                 self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
             })
           } else if (newState.learned.get.isComplete(domain) && notDelivered) {
@@ -69,9 +69,9 @@ trait Learner extends ActorLogging {
         context.actorSelection("../proposer*") ! Learned(instance, learned)
         context.parent ! DeliveredVMap(learned)
       }
-      else {
+      /*else {
         log.warning("VMap: {} - Already delivered!",learned)
-      }
+      }*/
 
     case msg: Msg2A =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)

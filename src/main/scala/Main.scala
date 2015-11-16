@@ -16,8 +16,9 @@ object Main {
     val nodeName = args(0)
     val defaultConfig = ConfigFactory.load()
 
+    val minNrOfNodes= defaultConfig.getConfig("cfabcast").getInt("min-nr-of-nodes")
+    
     val nodeConfig = defaultConfig.getConfig(s"cfabcast.nodes.${nodeName}")
-
     val hostname = nodeConfig.getString("hostname")
     val port = nodeConfig.getString("port")
 
@@ -29,6 +30,9 @@ object Main {
         port = ${port}
       }
       akka.cluster.roles = [cfabcast]
+      akka.cluster.role {
+        cfabcast.min-nr-of-members = ${minNrOfNodes} 
+      }
 
       cfabcast.node-id = ${nodeName}
     """).withFallback(defaultConfig)
