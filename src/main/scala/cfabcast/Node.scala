@@ -186,7 +186,7 @@ class Node extends Actor with ActorLogging {
     case msg: DeliveredVMap =>
       val vmap = msg.vmap.get
       if(vmap == None)
-        log.debug("Nothing learned yet! Value is BOTTOM! = {}", vmap)
+        log.warning("Nothing learned yet! Value is BOTTOM! = {}", vmap)
       else {
         log.info("Received learned vmap from {} with [{}] values.", sender, vmap.filter{ case (_, v) => v != Nil }.size)
         servers.foreach( server => { 
@@ -196,6 +196,7 @@ class Node extends Actor with ActorLogging {
               case values: Value =>
                 val response = values.value.getOrElse(Array[Byte]())
                 //log.debug("Value in response: {}", serializer.fromBinary(response))
+                log.info("NODE:{} - SENDING DELIVERED Value in response: {}", self, response)
                 server ! Delivery(response) 
               case _ => //do nothing if the value is Nil
             }

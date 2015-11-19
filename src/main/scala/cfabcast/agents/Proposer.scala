@@ -103,6 +103,8 @@ trait Proposer extends ActorLogging {
     if(prnd < msg.rnd) {
       if(msg.value.get.isEmpty) {
         val newState = oldState.copy(pval = None)
+        // TODO: improve round updates!!!!
+        // maybe a future pipeTo self is better option
         self ! UpdatePRound(msg.rnd, crnd)
         newState
       } else {

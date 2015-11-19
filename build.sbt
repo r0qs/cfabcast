@@ -61,27 +61,11 @@ libraryDependencies ++= Seq(
   "com.github.romix.akka" %% "akka-kryo-serialization" % "0.3.3",
   "org.scala-lang.modules" %%	"scala-async" % "0.9.5", 
   "ch.qos.logback" % "logback-classic" % "1.1.3",
-  "org.scalatest" %% "scalatest" % "2.2.1" % "test",
-  "io.kamon" %% "kamon-core" % kamonVersion,
-  "io.kamon" %% "kamon-statsd" % kamonVersion,
-  "io.kamon" %% "kamon-akka" % kamonVersion,
-  "io.kamon" %% "kamon-akka-remote" % kamonVersion,
-  "io.kamon" %% "kamon-system-metrics" % kamonVersion,
-  "io.kamon" %% "kamon-log-reporter" % kamonVersion,
-  "org.aspectj" % "aspectjweaver" % "1.8.2"
+  "org.scalatest" %% "scalatest" % "2.2.1" % "test"
 )
 
 /* Scala Style plugin */
 org.scalastyle.sbt.ScalastylePlugin.Settings
-
-/* Kamon aspectj weaver settings */
-// Bring the sbt-aspectj settings into this build
-aspectjSettings
-
-// Here we are effectively adding the `-javaagent` JVM startup
-// option with the location of the AspectJ Weaver provided by
-// the sbt-aspectj plugin.
-javaOptions in run <++= AspectjKeys.weaverOptions in Aspectj
 
 // We need to ensure that the JVM is forked for the
 // AspectJ Weaver to kick in properly and do it's magic.

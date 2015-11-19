@@ -4,15 +4,11 @@ import akka.pattern.ask
 
 import com.typesafe.config.ConfigFactory
 
-import kamon.Kamon
-
 import cfabcast._
 import cfabcast.messages._
 
 object Main {
   def main(args: Array[String]): Unit = {
-    Kamon.start()
-
     val nodeName = args(0)
     val defaultConfig = ConfigFactory.load()
 
@@ -43,8 +39,6 @@ object Main {
     //For test:
     //FIXME not work with fork := true
     node ! StartConsole
-
-    //Kamon.shutdown()
   }
 }
 

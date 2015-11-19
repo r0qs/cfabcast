@@ -19,6 +19,7 @@ trait Learner extends ActorLogging {
     async {
       val oldState = await(state)
       if(quorumed.nonEmpty) {
+        // TODO: verify if values are compatible
         val slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, quorumed)
         // TODO: verify if oldState.learned.get.isCompatible(quorumed.domain)
         val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
