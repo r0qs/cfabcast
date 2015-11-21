@@ -71,7 +71,6 @@ org.scalastyle.sbt.ScalastylePlugin.Settings
 // AspectJ Weaver to kick in properly and do it's magic.
 fork in run := true
 
-
 /* SBT Assembly merge strategy */
 // Disable tests in assembly
 test in assembly := {}

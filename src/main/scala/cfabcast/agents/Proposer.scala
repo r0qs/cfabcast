@@ -4,24 +4,21 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
-import scala.concurrent.Await
 import scala.util.Random
 import scala.concurrent.duration._
 import scala.util.{Success, Failure}
-import scala.async.Async.{async, await}
 
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-import akka.pattern.AskTimeoutException
 
 trait Proposer extends ActorLogging {
   this: ProposerActor =>
 
-  def phase1A(msg: Configure, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val oldState = await(state)
+  def phase1A(msg: Configure, state: ProposerMeta, config: ClusterConfiguration): ProposerMeta = {
+    val oldState = state
     if (isCoordinatorOf(msg.rnd) && crnd < msg.rnd) {
       val newState = oldState.copy(pval= oldState.pval, cval = None)
       self ! UpdatePRound(prnd, msg.rnd)
@@ -34,8 +31,8 @@ trait Proposer extends ActorLogging {
     }
   }
   
-  def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val oldState = await(state)
+  def propose(msg: Proposal, state: ProposerMeta, config: ClusterConfiguration)(implicit ec: ExecutionContext): ProposerMeta = {
+    val oldState = state
     if (msg.value.get.contains(msg.senderId)) {
       if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None) && msg.value.get(msg.senderId) != Nil) {
         // Phase 2A for CFProposers
@@ -54,8 +51,8 @@ trait Proposer extends ActorLogging {
     }
   }
  
-  def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val oldState = await(state)
+  def phase2A(msg: Msg2A, state: ProposerMeta, config: ClusterConfiguration): ProposerMeta = {
+    val oldState = state
     if (msg.value.get.contains(msg.senderId)) {
       if (isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None && msg.value.get(msg.senderId) != Nil) {
         // TODO update proposed counter
@@ -72,8 +69,9 @@ trait Proposer extends ActorLogging {
     }
   }
 
-  def phase2Start(msg: Msg1B, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val oldState = await(state)
+  def phase2Start(msg: Msg1B, state: ProposerMeta, config: ClusterConfiguration): ProposerMeta = {
+    val oldState = state
+    // FIXME: change to immutable Map
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
     if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && oldState.cval == None) {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
@@ -97,8 +95,8 @@ trait Proposer extends ActorLogging {
     }
   }  
 
-  def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
-    val oldState = await(state)
+  def phase2Prepare(msg: Msg2S, state: ProposerMeta, config: ClusterConfiguration): ProposerMeta = {
+    val oldState = state
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
     if(prnd < msg.rnd) {
       if(msg.value.get.isEmpty) {
@@ -130,7 +128,7 @@ trait Proposer extends ActorLogging {
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
-  def proposerBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[ProposerMeta]])(implicit ec: ExecutionContext): Receive = {
+  def proposerBehavior(config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext): Receive = {
     case msg: Broadcast =>
       //TODO: Use stash to store messages for further processing
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
@@ -160,7 +158,7 @@ trait Proposer extends ActorLogging {
               instance = proposed
             }
             val proposalMsg = Proposal(id, instance, round, vmap)
-            val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
+            val state = instances.getOrElse(instance, ProposerMeta(None, None))
             context.become(proposerBehavior(config, instances + (instance -> propose(proposalMsg, state, config))))
           } else {
             val cfps = round.cfproposers
@@ -185,31 +183,30 @@ trait Proposer extends ActorLogging {
     case GetState =>
       //TODO: async here!
       instances.foreach({case (instance, state) => 
-        state onComplete {
-          case Success(s) => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
-          case Failure(f) => log.error("INSTANCE: {} -- {} -- FUTURE FAIL: {}", instance, id, f)
-        }
+          log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, state)
       })
  
     case msg: Learned =>
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+      val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
       val learner = sender
       val vmap = msg.vmap
       if (vmap == None) {
         log.error("Learned NOTHING on: {} for instance: {}", learner, msg.instance)
       } else {
-        state onSuccess {
-          case s => 
-            //TODO verify if proposed value is equals to decided value
-            // Handle case when: java.util.NoSuchElementException: None.get
-            if (vmap.get(id) == s.pval.get(id)) {
+          //TODO verify if proposed value is equals to decided value
+          // Handle case when: java.util.NoSuchElementException: None.get
+          log.debug("Learned VMAP: {}, my state.pval: {}",vmap, state.pval)
+          if (vmap.contains(id)) {
+            if (vmap.get(id) == state.pval.get(id)) {
               learnedInstances = learnedInstances.insert(msg.instance) 
               log.info("Proposer: {} learned: {} in instance: {}", id, learnedInstances, msg.instance)
             } else {
-              log.error("INSTANCE: {} - Proposed value: {} was NOT LEARNED: {} send by {}", msg.instance, s.pval, vmap, learner)
+              log.error("INSTANCE: {} - Proposed value: {} was NOT LEARNED: {} send by {}", msg.instance, state.pval, vmap, learner)
               context.stop(self)
             }
-        }
+          } else {
+          
+          }
       }
 
     case msg: UpdatePRound => 
@@ -245,7 +242,7 @@ trait Proposer extends ActorLogging {
                 //exec phase2A
               })*/
               learnedInstances.complement().iterateOverAll(instance => {
-                val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
+                val state = instances.getOrElse(instance, ProposerMeta(None, None))
                 val rnd = Round(getCRoundCount, msg.coordinators, cfp)
                 val configMsg = Configure(id, instance, rnd)
                 log.debug("{} Configure INSTANCE: {} using ROUND: {}", id, instance, rnd)
@@ -266,7 +263,7 @@ trait Proposer extends ActorLogging {
     case msg: UpdateRound =>
       if (grnd < msg.rnd) {
         grnd = grnd.copy(msg.rnd.count+1)
-        val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+        val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
         val msgConfig = Configure(id, msg.instance, grnd)
         context.become(proposerBehavior(config, instances + (msg.instance -> phase1A(msgConfig, state, config))))
       } else {
@@ -276,14 +273,14 @@ trait Proposer extends ActorLogging {
     case msg: Msg2A =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       updateInstance(msg.instance)
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+      val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2A(msg, state, config))))
 
     case msg: Msg1B =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       //val roundCount = if (msg.rnd.count > msg.vrnd.count) msg.rnd.count else msg.vrnd.count
       //checkAndUpdateRoundsCount(roundCount)
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+      val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
       quorumPerInstance.getOrElseUpdate(msg.instance, scala.collection.mutable.Map())
       // This replaces msg 1B sent previously by the same acceptor in the same instance
       quorumPerInstance(msg.instance) += (msg.senderId -> msg)
@@ -292,10 +289,10 @@ trait Proposer extends ActorLogging {
     // Phase2Prepare
     case msg: Msg2S =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
-      val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
+      val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
       context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
 
-    // TODO: Do this in a sharedBehavior
+    // TODO: Do this in a sharedBehavior (use mixin)
     case msg: UpdateConfig =>
       context.become(proposerBehavior(msg.config, instances))
 
