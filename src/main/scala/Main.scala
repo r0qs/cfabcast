@@ -1,6 +1,7 @@
 import akka.actor._
 import akka.util.Timeout
 import akka.pattern.ask
+import akka.contrib.pattern.ClusterSingletonManager
 
 import com.typesafe.config.ConfigFactory
 
@@ -35,7 +36,13 @@ object Main {
 
     val system = ActorSystem("CFABCastSystem", config)
     val node = system.actorOf(Props[Node], "node")
-   
+    system.actorOf(ClusterSingletonManager.props(
+      singletonProps = Props[MembershipManager],
+      singletonName = "active",
+      terminationMessage = PoisonPill,
+      role = Some("cfabcast")),
+      name = "manager")
+
     //For test:
     //FIXME not work with fork := true
     node ! StartConsole

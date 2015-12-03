@@ -69,7 +69,7 @@ org.scalastyle.sbt.ScalastylePlugin.Settings
 
 // We need to ensure that the JVM is forked for the
 // AspectJ Weaver to kick in properly and do it's magic.
-fork in run := true
+//fork in run := true
 
 
 /* SBT Assembly merge strategy */

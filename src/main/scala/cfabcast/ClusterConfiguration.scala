@@ -53,8 +53,8 @@ object ClusterConfiguration {
       s.reverseAll
       s
     }
-  def apply(): ClusterConfiguration =
-    SimpleClusterConfiguration(0, Map(), Map(), Map())
+  def apply(quorumSize: Int = 0): ClusterConfiguration =
+    SimpleClusterConfiguration(quorumSize, Map(), Map(), Map())
 }
 
 case class SimpleClusterConfiguration(

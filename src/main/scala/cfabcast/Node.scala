@@ -26,6 +26,7 @@ import cfabcast.serialization.CFABCastSerializer
  * This node will handle the request of some client command
  */
 class Node extends Actor with ActorLogging {
+  //TODO: cleanup and change name to replica
   val serializer = new CFABCastSerializer(context.system.asInstanceOf[ExtendedActorSystem])
   val cluster = Cluster(context.system)
   val settings = Settings(context.system)
@@ -37,9 +38,9 @@ class Node extends Actor with ActorLogging {
   val learnersIds = settings.LearnerIdsByName
   val acceptorsIds = settings.AcceptorIdsByName
   val protocolRoles = settings.ProtocolRoles
-  
-  log.info("NODE AGENTS: {}", nodeAgents)
 
+  log.info("NODE AGENTS: {}", nodeAgents)
+  
   // Agents of the protocol
   var proposers = Map.empty[AgentId, ActorRef]
   var acceptors = Map.empty[AgentId, ActorRef]
@@ -75,7 +76,7 @@ class Node extends Actor with ActorLogging {
   val console = context.actorOf(Props[ConsoleClient], "console")
 
   //TODO: Set the Oracle class based on configuration
-  val leaderOracle = context.actorOf(Props[LeaderOracle], "leaderOracle")
+  //val leaderOracle = context.actorOf(Props[LeaderOracle], "leaderOracle")
 
   val cfproposerOracle = context.actorOf(Props[CFProposerOracle], "cfproposerOracle")
 
@@ -86,7 +87,7 @@ class Node extends Actor with ActorLogging {
 
   // Subscribe to cluster changes, MemberUp
   override def preStart(): Unit = {
-    cluster.subscribe(self, classOf[MemberEvent], classOf[UnreachableMember])
+    cluster.subscribe(self, classOf[UnreachableMember])
   }
 
   // Unsubscribe when stop to re-subscripe when restart
@@ -102,13 +103,6 @@ class Node extends Actor with ActorLogging {
     for (l <- learners.values  if !learners.isEmpty)  { l ! UpdateConfig(config) }
   }
 
-  def register(member: Member): Unit = {
-    if(member.hasRole("cfabcast") || member.hasRole("server") || member.hasRole("client")) {
-      nodes += member.address
-      context.actorSelection(memberPath(member.address)) ! Identify(member)
-    }
-  }
-
   def getRandomAgent(from: Vector[ActorRef]): Option[ActorRef] = 
     if (from.isEmpty) None
     else Some(from(Random.nextInt(from.size)))
@@ -120,7 +114,7 @@ class Node extends Actor with ActorLogging {
     javaSet
   }
 
-  // FIXME: Only do this step if all configured nodes are UP. How know that?
+  // FIXME: Only do this step if all configured nodes are UP. How know that? Singleton?
   def getBroadcastGroup(): java.util.Set[ActorRef] = scalaToJavaSet[ActorRef](members.keys.toSet)
 
   //TODO Use ClusterSingleton to manager ClusterClient requests and a Router to select agents
@@ -204,64 +198,30 @@ class Node extends Actor with ActorLogging {
         })
       }
 
+    //TODO: Remove this
     case state: CurrentClusterState =>
       log.info("Current members: {}", state.members)
       nodes = state.members.collect {
         case m if m.status == MemberStatus.Up => m.address
       }
 
-    case MemberUp(member) =>
-      log.info("Member is Up: {}. {} nodes in cluster", member.address, nodes.size)
-      if (!nodes.contains(member.address)) {
-        register(member)
-      }
-    // Return the ActorRef of a member node
-    case ActorIdentity(member: Member, Some(ref)) =>
-      if (member.hasRole("cfabcast")) {
-        log.info("{} : Requesting protocol agents to {}", self, ref)
-        ref ! GiveMeAgents
-      } 
-
-    case ActorIdentity(member: Member, None) =>
-      log.warning("Unable to find any actor on node: {}", member.address)
-      // Try again, and again...
-      context.actorSelection(memberPath(member.address)) ! Identify(member)
+    case msg: UpdateConfig =>
+      log.debug("Node: {} update config to: {}", nodeId, msg.config)
+      notifyAll(msg.config)
+      context.become(configuration(msg.config))
+      sender ! Done
 
     // Get the configuration of some member node
     case GiveMeAgents =>
       sender ! GetAgents(self, myConfig)
 
-    case GetAgents(ref: ActorRef, newConfig: ClusterConfiguration) => 
-      val actualConfig = config + newConfig
-      members += (ref -> newConfig)
-      notifyAll(actualConfig)
-      //TODO: awaiting for new nodes (at least: 3 acceptors and 1 proposer and learner)
-      // when all nodes are register (cluster gossip converge) initialize the protocol and not admit new members
-      if (actualConfig.acceptors.size >= waitFor) {
-        leaderOracle ! MemberChange(actualConfig, proposers.values.toSet, waitFor)
-      }
-      context watch ref
-      context.become(configuration(actualConfig))
-
     case UnreachableMember(member) =>
       log.warning("Member {} detected as unreachable: {}", self, member)
       //TODO notify the leaderOracle and adopt new police
 
-    case MemberRemoved(member, previousStatus) =>
-      log.warning("Member {} removed: {} after {}", self, member.address, previousStatus)
-      nodes -= member.address
-
     case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers.values.toSet)
 
-    // TODO: Improve this
-    case Terminated(ref) =>
-      log.warning("Actor {} terminated, removing config: {}", ref, members(ref))
-      val newConfig = config - members(ref)
-      notifyAll(newConfig)
-      context.become(configuration(newConfig))
-      members -= ref
-
-    case _ =>
-      log.error("A unknown message received!")
+    case m =>
+      log.error("A unknown message [ {} ] received!", m)
   }
 }
