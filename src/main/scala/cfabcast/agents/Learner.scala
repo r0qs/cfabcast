@@ -4,10 +4,7 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 
-import scala.concurrent.{Future, Promise}
 import scala.concurrent.ExecutionContext
-import scala.util.{Success, Failure}
-import scala.async.Async.{async, await}
 import collection.concurrent.TrieMap
 
 import akka.actor._
@@ -15,9 +12,8 @@ import akka.actor._
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta])(implicit ec: ExecutionContext): Future[LearnerMeta] = 
-    async {
-      val oldState = await(state)
+  def learn(quorumed: VMap[AgentId, Values], instance: Instance, state: LearnerMeta, config: ClusterConfiguration): LearnerMeta = {
+      val oldState = state
       if(quorumed.nonEmpty) {
         // TODO: verify if values are compatible
         val slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, quorumed)
@@ -25,18 +21,16 @@ trait Learner extends ActorLogging {
         val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
         val newState = oldState.copy(learned = Some(lubVals))
         if (newState.learned.get.size > oldState.learned.get.size) {
-            //FIXME: This ins't thread-safe
-            /* try {
-              instancesLearned = instancesLearned.insert(instance)
-            } catch {
-            case e: ElementAlreadyExistsException => 
-              log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
-            }*/
+          //instancesLearned = instancesLearned.insert(instance)
           val notDelivered = quorumPerInstance.getOrElse(instance, Quorum[AgentId, Vote]()).existsNotDeliveredValue
           if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
             quorumed.foreach({ case (proposerId , value) =>
-              if (value != Nil) //TODO: only do this if the value was not delivered
-                self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
+              config.proposers.get(proposerId) match {
+                case Some(ref) => ref ! Learned(instance, Some(VMap(proposerId -> value)))
+                                  if (value != Nil)
+                                    self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
+                case None => log.error("Proposer actorRef not found!")
+              }
             })
           } else if (newState.learned.get.isComplete(domain) && notDelivered) {
             // Default policy
@@ -51,23 +45,22 @@ trait Learner extends ActorLogging {
     }
 
   def deliver(instance: Instance, learned: Option[VMap[AgentId, Values]]): Unit = {
+    context.actorSelection("../proposer*") ! Learned(instance, learned)
     learned.get.foreach({ case(proposerId, _) => 
       quorumPerInstance(instance).setDelivered(proposerId)
     })
     log.debug("{} deliver of vmap: {} in instance:{} quorum:{}", settings.DeliveryPolicy, learned, instance, quorumPerInstance)
-    context.actorSelection("../proposer*") ! Learned(instance, learned)
     context.parent ! DeliveredVMap(learned)
   }
 
   // FIXME: Clean quorums when receive msgs from all agents of the instance
-  def learnerBehavior(config: ClusterConfiguration, instances: Map[Instance, Future[LearnerMeta]])(implicit ec: ExecutionContext): Receive = {
+  def learnerBehavior(config: ClusterConfiguration, instances: Map[Instance, LearnerMeta])(implicit ec: ExecutionContext): Receive = {
 
     case Deliver(instance, proposerId, learned) =>
       val delivered = quorumPerInstance(instance).get(proposerId).get.delivered
       if (!delivered) {
         quorumPerInstance(instance).setDelivered(proposerId)
         log.debug("{} deliver of vmap: {} in instance:{} quorum:{}", settings.DeliveryPolicy, learned, instance, quorumPerInstance)
-        context.actorSelection("../proposer*") ! Learned(instance, learned)
         context.parent ! DeliveredVMap(learned)
       }
       /*else {
@@ -81,9 +74,9 @@ trait Learner extends ActorLogging {
           val p = pPerInstance.getOrElse(msg.instance, VMap[AgentId, Values]())
           // FIXME: verify if msg.value is None
           pPerInstance += (msg.instance -> (p ++ msg.value.get))
-          val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
+          val state = instances.getOrElse(msg.instance, LearnerMeta(Some(VMap[AgentId, Values]())))
           val nilVmaps = pPerInstance(msg.instance)
-          context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(nilVmaps, msg.instance, state))))
+          context.become(learnerBehavior(config, instances + (msg.instance -> learn(nilVmaps, msg.instance, state, config))))
         }
       } else {
         log.error("INSTANCE: {} - {} value {} not contain {}", msg.instance, id, msg.value.get, msg.senderId)
@@ -103,18 +96,15 @@ trait Learner extends ActorLogging {
       val decidedVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
       // Replaces values proposed previously by the same proposer on the same instance
       quorumPerInstance += (msg.instance -> quorum)
-      val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
-      context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(decidedVals, msg.instance, state))))
+      val state = instances.getOrElse(msg.instance, LearnerMeta(Some(VMap[AgentId, Values]())))
+      context.become(learnerBehavior(config, instances + (msg.instance -> learn(decidedVals, msg.instance, state, config))))
 
     case GetIntervals =>
       sender ! TakeIntervals(instancesLearned)
 
     case GetState =>
       instances.foreach({case (instance, state) => 
-        state onComplete {
-          case Success(s) => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
-          case Failure(f) => log.error("INSTANCE: {} -- {} -- FUTURE FAIL: {}", instance, id, f)
-        }
+          log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, state)
       })
 
     case msg: UpdateConfig =>
