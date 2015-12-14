@@ -50,9 +50,6 @@ case object GetIntervals extends Message
 case class TakeIntervals(interval: IRange) extends Message
 case class UpdateRound(instance: Instance, rnd: Round) extends Message
 
-case class UpdatePRound(prnd: Round, crnd: Round) extends Message
-
-case class ProposedIn(instance: Instance, value: Values) extends Message
 case object Done extends Message
 
 /*

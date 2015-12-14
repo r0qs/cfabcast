@@ -13,14 +13,13 @@ trait Learner extends ActorLogging {
   this: LearnerActor =>
 
   def learn(quorumed: VMap[AgentId, Values], instance: Instance, state: LearnerMeta, config: ClusterConfiguration): LearnerMeta = {
-      val oldState = state
       if(quorumed.nonEmpty) {
         // TODO: verify if values are compatible
-        val slub: List[VMap[AgentId, Values]] = List(oldState.learned.get, quorumed)
-        // TODO: verify if oldState.learned.get.isCompatible(quorumed.domain)
+        val slub: List[VMap[AgentId, Values]] = List(state.learned.get, quorumed)
+        // TODO: verify if state.learned.get.isCompatible(quorumed.domain)
         val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
-        val newState = oldState.copy(learned = Some(lubVals))
-        if (newState.learned.get.size > oldState.learned.get.size) {
+        val newState = state.copy(learned = Some(lubVals))
+        if (newState.learned.get.size > state.learned.get.size) {
           //instancesLearned = instancesLearned.insert(instance)
           val notDelivered = quorumPerInstance.getOrElse(instance, Quorum[AgentId, Vote]()).existsNotDeliveredValue
           if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
@@ -40,7 +39,7 @@ trait Learner extends ActorLogging {
         newState
       } else {
         log.debug("INSTANCE: {} - MSG2B - {} Quorum requirements not satisfied: {}", instance, id, quorumed)
-        oldState
+        state
       }   
     }
 
