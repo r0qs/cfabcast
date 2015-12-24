@@ -21,7 +21,7 @@ import cfabcast.messages._
 
 class MembershipManager extends Actor with ActorLogging {
   import context.dispatcher
-
+  
   val cluster = Cluster(context.system)
   val settings = Settings(context.system)
   val waitFor = settings.MinNrOfNodes
