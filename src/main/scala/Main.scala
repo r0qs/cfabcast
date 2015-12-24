@@ -36,12 +36,12 @@ object Main {
 
     val system = ActorSystem("CFABCastSystem", config)
     val node = system.actorOf(Props[Node], "node")
-    system.actorOf(ClusterSingletonManager.props(
-      singletonProps = Props[MembershipManager],
-      singletonName = "active",
-      terminationMessage = PoisonPill,
-      role = Some("cfabcast")),
-      name = "manager")
+    val singleton = system.actorOf(ClusterSingletonManager.props(
+        singletonProps = Props[MembershipManager],
+        singletonName = "active",
+        terminationMessage = PoisonPill,
+        role = Some("cfabcast")),
+        name = "manager")
 
     //For test:
     //FIXME not work with fork := true
