@@ -12,7 +12,7 @@ Please look in the official [documentation of sbt](http://www.scala-sbt.org/rele
 
 ```
 Running with SBT:
-sbt 'run-main -Dconfig.file=benchmark/debug/cfabcast-debug.conf Main node1'
+sbt -Dconfig.file=benchmark/debug/cfabcast-debug.conf 'run-main Main node1'
 
 Running with Kamon:
 sbt 'run-main -Dkamon.system-metrics.sigar-native-folder=native/node1 -Dconfig.file=benchmark/debug/cfabcast-debug.conf Main node1'

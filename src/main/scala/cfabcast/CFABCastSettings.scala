@@ -8,6 +8,8 @@ import akka.actor.ExtendedActorSystem
 import akka.util.Helpers.Requiring
 import akka.japi.Util.immutableSeq
 
+import scala.concurrent.duration._
+import scala.concurrent.duration.FiniteDuration
 import scala.collection.immutable
 
 import com.typesafe.config.Config
@@ -18,7 +20,15 @@ class CFABCastSettings(config: Config) extends Extension {
   private val cc = config.getConfig("cfabcast")
 
   //val Roles: Set[String] = immutableSeq(config.getStringList("akka.cluster.roles")).toSet
-  
+ 
+  val BatchTimeoutThreshold: FiniteDuration = {
+    cc.getDuration("batch-timeout-threshold", MILLISECONDS).millis
+  } requiring (_ > Duration.Zero, "batch-timeout-threshold must be >= 0")
+
+  val BatchSizeThreshold: Int = {
+    cc.getLong("batch-size-threshold")
+  } requiring (_ > 0, "batch-size-threshold must be > 0")
+
   val MinNrOfNodes: Int = {
     cc.getInt("min-nr-of-nodes")
   } requiring (_ > 0, "min-nr-of-nodes must be > 0")

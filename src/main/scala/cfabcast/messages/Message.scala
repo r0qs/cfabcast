@@ -39,6 +39,8 @@ case class Configure(senderId: AgentId, instance: Instance, rnd: Round) extends 
 // Message sent to propose a new value
 case class TryPropose(value: Values) extends Message
 
+case class ProposalTimeout(timeout: Long, round: Round) extends Message
+
 case object GetCFPs extends Message
 
 case class Learned(instance: Instance, vmap: Option[VMap[AgentId, Values]]) extends Message
