@@ -26,7 +26,7 @@ class CFABCastSettings(config: Config) extends Extension {
   } requiring (_ > Duration.Zero, "batch-timeout-threshold must be >= 0")
 
   val BatchSizeThreshold: Int = {
-    cc.getLong("batch-size-threshold")
+    cc.getInt("batch-size-threshold")
   } requiring (_ > 0, "batch-size-threshold must be > 0")
 
   val MinNrOfNodes: Int = {

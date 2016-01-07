@@ -135,46 +135,56 @@ trait Proposer extends ActorLogging {
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
-  def batchProposal(data: Array[Byte]): Array[Byte] = {
-    log.info("TIME: {}", System.currentTimeMillis)
+  def batchProposal(data: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) : Array[Byte] = {
+    log.debug("Batching proposal: {} with: {}", data.toString, batchValue.toString)
     // accumulate data
-    batchValue ++ data
+    if (batchValue.size + data.size > settings.BatchSizeThreshold) {
+      log.debug("Batch size exceeded - tryPropose:{} next batch:{}", batchValue.toString, data.toString)
+      tryPropose(batchValue, round, config, instances)
+      data
+    } else {
+      batchValue ++ data
+    }
+  }
+
+  def tryPropose(value2propose: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) = {
+    val value = Value(Some(value2propose))
+    batchTimeout = Zero.toMillis
+    batchValue = Array[Byte]()
+    proposed += 1
+    log.debug("{} - PROPOSED: {} Greatest known instance: {}", id, proposed, greatestInstance)
+    if (proposed > greatestInstance) {
+      greatestInstance = proposed
+    } else if (proposed <= greatestInstance) {
+      proposed = greatestInstance + 1
+    }
+    log.info("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
+    // If not proposed and not learned nothing yet in this instance
+    val vmap: Option[VMap[AgentId, Values]] = Some(VMap(id -> value))
+    var instance = learnedInstances.next
+    if (!learnedInstances.contains(proposed)) {
+      instance = proposed
+    }
+    val proposalMsg = Proposal(id, instance, round, vmap)
+    val state = instances.getOrElse(instance, ProposerMeta(None, None))
+    context.become(proposerBehavior(config, instances + (instance -> propose(proposalMsg, state, config))))
   }
 
   def proposerBehavior(config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext): Receive = {
     case ProposalTimeout(lastBatchTimeout, round) =>
       val current = System.currentTimeMillis
-      log.debug("Timeout received:\n current: {}\n batchTimeout: {}\n lastBatchTimeout: {}\n batchTimeoutDelta: {}", current, batchTimeout, lastBatchTimeout, batchTimeoutDelta)
-      if (current - lastBatchTimeout > batchTimeoutDelta) {
-        val value = Value(Some(batchValue))
-        batchTimeout = Zero.toMillis
-        batchValue = Array[Byte]()
-        proposed += 1
-        log.debug("{} - PROPOSED: {} Greatest known instance: {}", id, proposed, greatestInstance)
-        if (proposed > greatestInstance) {
-          greatestInstance = proposed
-        } else if (proposed <= greatestInstance) {
-          proposed = greatestInstance + 1
-        }
-        log.info("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
-        // If not proposed and not learned nothing yet in this instance
-        val vmap: Option[VMap[AgentId, Values]] = Some(VMap(id -> value))
-        var instance = learnedInstances.next
-        if (!learnedInstances.contains(proposed)) {
-          instance = proposed
-        }
-        val proposalMsg = Proposal(id, instance, round, vmap)
-        val state = instances.getOrElse(instance, ProposerMeta(None, None))
-        context.become(proposerBehavior(config, instances + (instance -> propose(proposalMsg, state, config))))
+      //log.debug("Timeout received:\n batchValue: {}\n current: {}\n lastBatchTimeout: {}\n batchTimeoutDelta: {}", batchValue, current, lastBatchTimeout, batchTimeoutDelta)
+      if (current - lastBatchTimeout > batchTimeoutDelta && batchValue.nonEmpty) {
+        tryPropose(batchValue, round, config, instances)
       } else {
-        log.warning("Not accumulate")
+        log.warning("Not accumulate, batchValue: {}", batchValue)
       }
 
     case msg: Broadcast =>
       //TODO: Use stash to store messages for further processing
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
       if (waitFor <= config.acceptors.size) {
-        log.debug("Receive proposal: {} from {} with batchTimeout: {}", msg.data, sender, batchTimeout)
+        log.debug("Receive proposal: {} from {}", msg.data, sender)
         // update the grnd
         if (coordinators.nonEmpty) {
           var round = prnd
@@ -183,14 +193,11 @@ trait Proposer extends ActorLogging {
             round = grnd
           }
           if (isCFProposerOf(round)) {
-            if (batchTimeout > 0) {
-              batchValue = batchProposal(msg.data)
-            } else {
+            if (batchTimeout == 0) {
               batchTimeout = batchTimeoutDelta
-              batchValue = batchProposal(msg.data)
               val cancelable = context.system.scheduler.scheduleOnce(Duration(batchTimeout, MILLISECONDS), self, ProposalTimeout(System.currentTimeMillis, round))
-              //          lastBatchTimeout = System.currentTimeMillis
             }
+            batchValue = batchProposal(msg.data, round, config, instances)
           } else {
             val cfps = round.cfproposers
             log.warning("{} - Receive a broadcast: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
@@ -340,10 +347,10 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
   val quorumPerInstance = scala.collection.mutable.Map[Instance, scala.collection.mutable.Map[AgentId, Message]]()
 
   var batchTimeout: Long = Zero.toMillis
-  val batchTimeoutDelta: Long = settings.BatchTimeoutThreshold).toMillis
+  val batchTimeoutDelta: Long = settings.BatchTimeoutThreshold.toMillis
   //TODO: make this generic
   //Use java.nio.ByteBuffer and limit size
-  var batchValue: Array[Byte] = new Array[Byte](settings.BatchSizeThreshold)
+  var batchValue: Array[Byte] = Array[Byte]()
 
   override def preStart(): Unit = {
     log.info("Proposer ID: {} UP on {}", id, self.path)
