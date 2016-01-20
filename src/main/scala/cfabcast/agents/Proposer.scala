@@ -147,10 +147,12 @@ trait Proposer extends ActorLogging {
     }
   }
 
-  def tryPropose(value2propose: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) = {
-    val value = Value(Some(value2propose))
-    batchTimeout = Zero.toMillis
-    batchValue = Array[Byte]()
+  def tryPropose(data: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) = {
+    val value = Value(Some(data))
+    if (settings.Batch) {
+      batchTimeout = Zero.toMillis
+      batchValue = Array[Byte]()
+    }
     proposed += 1
     log.debug("{} - PROPOSED: {} Greatest known instance: {}", id, proposed, greatestInstance)
     if (proposed > greatestInstance) {
@@ -193,11 +195,15 @@ trait Proposer extends ActorLogging {
             round = grnd
           }
           if (isCFProposerOf(round)) {
-            if (batchTimeout == 0) {
-              batchTimeout = batchTimeoutDelta
-              val cancelable = context.system.scheduler.scheduleOnce(Duration(batchTimeout, MILLISECONDS), self, ProposalTimeout(System.currentTimeMillis, round))
+            if (settings.Batch) {
+              batchValue = batchProposal(msg.data, round, config, instances)
+              if (batchTimeout == 0) {
+                batchTimeout = batchTimeoutDelta
+                val cancelable = context.system.scheduler.scheduleOnce(Duration(batchTimeout, MILLISECONDS), self, ProposalTimeout(System.currentTimeMillis, round))
+              }
+            } else {
+              tryPropose(msg.data, round, config, instances)
             }
-            batchValue = batchProposal(msg.data, round, config, instances)
           } else {
             val cfps = round.cfproposers
             log.warning("{} - Receive a broadcast: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)

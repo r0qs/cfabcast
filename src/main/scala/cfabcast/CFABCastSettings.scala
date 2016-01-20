@@ -20,7 +20,15 @@ class CFABCastSettings(config: Config) extends Extension {
   private val cc = config.getConfig("cfabcast")
 
   //val Roles: Set[String] = immutableSeq(config.getStringList("akka.cluster.roles")).toSet
- 
+
+  val Batch: Boolean = {
+    val key = "batch"
+    cc.getString(key).toLowerCase match {
+      case "off" ⇒ false
+      case _     ⇒ true
+    }
+  } 
+  
   val BatchTimeoutThreshold: FiniteDuration = {
     cc.getDuration("batch-timeout-threshold", MILLISECONDS).millis
   } requiring (_ > Duration.Zero, "batch-timeout-threshold must be >= 0")
