@@ -135,23 +135,22 @@ trait Proposer extends ActorLogging {
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
-  def batchProposal(data: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) : Array[Byte] = {
+  def batchProposal(data: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) : Value = {
     log.debug("Batching proposal: {} with: {}", data.toString, batchValue.toString)
     // accumulate data
-    if (batchValue.size + data.size > settings.BatchSizeThreshold) {
+    if (batchValue.sizeInBytes + data.size > settings.BatchSizeThreshold) {
       log.debug("Batch size exceeded - tryPropose:{} next batch:{}", batchValue.toString, data.toString)
       tryPropose(batchValue, round, config, instances)
-      data
+      Value(data)
     } else {
-      batchValue ++ data
+      Value(batchValue.value ++ List(Some(data)))
     }
   }
 
-  def tryPropose(data: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) = {
-    val value = Value(Some(data))
+  def tryPropose(value: Value, round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) = {
     if (settings.Batch) {
       batchTimeout = Zero.toMillis
-      batchValue = Array[Byte]()
+      batchValue = Value()
     }
     proposed += 1
     log.debug("{} - PROPOSED: {} Greatest known instance: {}", id, proposed, greatestInstance)
@@ -202,7 +201,7 @@ trait Proposer extends ActorLogging {
                 val cancelable = context.system.scheduler.scheduleOnce(Duration(batchTimeout, MILLISECONDS), self, ProposalTimeout(System.currentTimeMillis, round))
               }
             } else {
-              tryPropose(msg.data, round, config, instances)
+              tryPropose(Value(msg.data), round, config, instances)
             }
           } else {
             val cfps = round.cfproposers
@@ -356,7 +355,7 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
   val batchTimeoutDelta: Long = settings.BatchTimeoutThreshold.toMillis
   //TODO: make this generic
   //Use java.nio.ByteBuffer and limit size
-  var batchValue: Array[Byte] = Array[Byte]()
+  var batchValue: Value = Value()
 
   override def preStart(): Unit = {
     log.info("Proposer ID: {} UP on {}", id, self.path)

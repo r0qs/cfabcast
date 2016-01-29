@@ -188,10 +188,16 @@ class Node extends Actor with ActorLogging {
           vmap.foreach({case (_ , value) =>
             value match {
               case values: Value =>
-                val response = values.value.getOrElse(Array[Byte]())
-                //log.debug("Value in response: {}", serializer.fromBinary(response))
-                log.info("NODE:{} - SENDING DELIVERED Value in response: {}", self, response)
-                server ! Delivery(response) 
+                val v = values.value
+                if (v.nonEmpty){
+                  v.foreach(o => o match { 
+                    case Some(response) => 
+                      //log.debug("Value in response: {}", serializer.fromBinary(response))
+                      log.info("NODE:{} - SENDING DELIVERED Value in response: {}", self, response)
+                      server ! Delivery(response)
+                    case None => //do nothing if the value is Nil
+                  })
+                } //else do nothing
               case _ => //do nothing if the value is Nil
             }
           })

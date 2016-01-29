@@ -14,32 +14,40 @@ abstract class Values extends Serializable {
 }
 
 class Value private extends Values {
-  type T = Option[Array[Byte]]
-  val value: T = None
+  type T = List[Option[Array[Byte]]]
+  val value: T = List()
   
-  override def equals(other : Any) : Boolean = other match {
-    case that : Value => (this.canEqual(that) && java.util.Arrays.equals(this.value.get, that.value.get))
-    case _ => false
+  override def toString: String = {
+    val v: List[Option[Array[Byte]]] = this.value
+    if (v.nonEmpty){
+      v.map(o => o match { 
+        case None => "Nil (empty)"
+        case Some(e) => java.util.Arrays.asList(e:_*).toString
+      }).toString
+    } else {
+    "(empty value)"
+    }
   }
-  
-  def canEqual(other : Any) : Boolean = other.isInstanceOf[Value]
-  
-  /*override def toString: String = {
-    val v = this.value.getOrElse(Array[Byte]())
-    if(v == null) "None" else java.util.Arrays.asList(v:_*).toString
-  }*/
+
+  def sizeInBytes: Int = value.flatten.foldLeft(0)(_ + _.size)
+
+  // Number of values
+  def size: Int = value.size
+
+  def nonEmpty: Boolean = this.value.nonEmpty
 }
 
 //TODO: make this generic
 object Value {
-  def apply(v: Option[Array[Byte]]) = new Value { override val value = v }
+  def apply(v: List[Option[Array[Byte]]]) = new Value { override val value = v }
+  def apply(v: Array[Byte]) = new Value { override val value = List(Some(v)) }
   def apply() = new Value()
 }
 
 // FIXME: there's a better way to do this?
 object Nil extends Values{
-  type T = Option[Array[Byte]]
-  val value: T = Some(Array[Byte]())
+  type T = List[Option[Array[Byte]]]
+  val value: T = List(None)
   override def toString: String = "Nil"
 }
 
