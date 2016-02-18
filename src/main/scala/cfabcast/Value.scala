@@ -17,7 +17,7 @@ class Value private extends Values {
   type T = List[Option[Array[Byte]]]
   val value: T = List()
   
-  override def toString: String = {
+/*  override def toString: String = {
     val v: List[Option[Array[Byte]]] = this.value
     if (v.nonEmpty){
       v.map(o => o match { 
@@ -27,7 +27,7 @@ class Value private extends Values {
     } else {
     "(empty value)"
     }
-  }
+  }*/
 
   def sizeInBytes: Int = value.flatten.foldLeft(0)(_ + _.size)
 

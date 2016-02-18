@@ -136,10 +136,10 @@ trait Proposer extends ActorLogging {
   }
 
   def batchProposal(data: Array[Byte], round: Round, config: ClusterConfiguration, instances: Map[Instance, ProposerMeta])(implicit ec: ExecutionContext) : Value = {
-    log.debug("Batching proposal: {} with: {}", data.toString, batchValue.toString)
+    log.info("Batching proposal: {} with: {}[in bytes] {}[# of elements]", data.size, batchValue.sizeInBytes, batchValue.size)
     // accumulate data
     if (batchValue.sizeInBytes + data.size > settings.BatchSizeThreshold) {
-      log.debug("Batch size exceeded - tryPropose:{} next batch:{}", batchValue.toString, data.toString)
+      log.info("Batch size exceeded - tryPropose:{} next batch:{}", batchValue, data)
       tryPropose(batchValue, round, config, instances)
       Value(data)
     } else {
@@ -178,7 +178,7 @@ trait Proposer extends ActorLogging {
       if (current - lastBatchTimeout > batchTimeoutDelta && batchValue.nonEmpty) {
         tryPropose(batchValue, round, config, instances)
       } else {
-        log.warning("Not accumulate, batchValue: {}", batchValue)
+        log.debug("Not accumulate, timeout expired.")
       }
 
     case msg: Broadcast =>
