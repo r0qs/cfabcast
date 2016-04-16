@@ -24,7 +24,7 @@ class MembershipManager extends Actor with ActorLogging {
   
   val cluster = Cluster(context.system)
   val settings = Settings(context.system)
-  val waitFor = settings.MinNrOfNodes
+  val minNrOfNodes = settings.MinNrOfNodes
   val quorumSize = settings.QuorumSize
   
   // A Set of nodes(members) in the cluster that this node knows about
@@ -88,13 +88,13 @@ class MembershipManager extends Actor with ActorLogging {
       context watch ref
       context.become(registering(actualConfig))
       val refs = members.keySet
-      if (refs.size == waitFor) {
+      if (refs.size >= minNrOfNodes) {
         //TODO: Remove this from here
         implicit val timeout = Timeout(3 seconds)
         val futOfDones = refs.map(r => r ? UpdateConfig(actualConfig))
         val allDone = Future.sequence(futOfDones).onComplete {
           // TODO: explicitly send to leaders ref
-          case Success(s) => leaderOracle ! MemberChange(actualConfig, actualConfig.proposers.values.toSet, waitFor)
+          case Success(s) => leaderOracle ! MemberChange(actualConfig, actualConfig.proposers.values.toSet, minNrOfNodes)
           case Failure(f) => log.error("Something goes wrong: {} ", f)
         }
       }
