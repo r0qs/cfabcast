@@ -69,7 +69,8 @@ trait Proposer extends ActorLogging {
   def phase2Start(msg: Msg1B, state: ProposerMeta, config: ClusterConfiguration): ProposerMeta = {
     // FIXME: change to immutable Map
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
-    if (quorum.size >= config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && state.cval == None) {
+    // FIXME: Enter only one time here! Using == instead of >= defined in the specification
+    if (quorum.size == config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && state.cval == None) {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
       val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
       val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[AgentId, Values]]) => e)
