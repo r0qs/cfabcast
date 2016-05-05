@@ -95,6 +95,7 @@ trait Learner extends ActorLogging {
       val decidedVals = VMap.fromList(quorum.getQuorumed(settings.QuorumSize).flatten)
       // Replaces values proposed previously by the same proposer on the same instance
       quorumPerInstance += (msg.instance -> quorum)
+      //FIXME NOT learn a trivial vmap, only execute if has a number of members to form a quorum
       val state = instances.getOrElse(msg.instance, LearnerMeta(Some(VMap[AgentId, Values]())))
       context.become(learnerBehavior(config, instances + (msg.instance -> learn(decidedVals, msg.instance, state, config))))
 

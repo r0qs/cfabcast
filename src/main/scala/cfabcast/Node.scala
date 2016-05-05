@@ -155,8 +155,7 @@ class Node extends Actor with ActorLogging {
         case "astate"   => acceptors.values.foreach(_ ! GetState) 
         case "lstate"   => learners.values.foreach(_ ! GetState)
         case "interval" => learners.values.foreach(_ ! GetIntervals)
-        case "snap"     => acceptors.values.foreach(_ ! "snap")
-        case "print"    => acceptors.values.foreach(_ ! "print")
+        case "config"   => log.info("{} - CONFIG: {}", nodeId, config)
         case "all"      => 
           config.proposers.values.zipWithIndex.foreach { case (ref, i) =>
             ref ! Broadcast(serializer.toBinary(cmd ++ "_" ++ i.toString))
