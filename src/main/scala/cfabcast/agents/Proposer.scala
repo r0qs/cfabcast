@@ -227,40 +227,35 @@ trait Proposer extends ActorLogging {
       //TODO: Update the prnd with the new coordinator
       //prnd = prnd.copy(coordinator = rnd.coordinator)
       coordinators = msg.coordinators
-      if(config.acceptors.size >= settings.QuorumSize) {
-        log.info("Discovered {} acceptors, starting protocol instance with QuorumSize:{}", config.acceptors.size, settings.QuorumSize)
-        if (msg.coordinators contains self) {
-          log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
-          // Run configure phase (1)
-          implicit val timeout = Timeout(3 seconds)
-          val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
-          cfpSet onComplete {
-            case Success(cfp) => 
-              // Not repropose Nil on the last valid instance, use it to a new value
-              /*val nilReproposalInstances = learnedInstances.complement().dropLast
-              nilReproposalInstances.iterateOverAll(i => {
-                log.info(s"INSTANCE: ${i} - proposed: ${id} sending NIL to himself")
-                self ! Proposal(id, i, round, Some(VMap(id -> Nil)))
-                //FIXME: Maybe send this direct to learners
-                //exec phase2A
-              })*/
-              learnedInstances.complement().iterateOverAll(instance => {
-                val state = instances.getOrElse(instance, ProposerMeta(None, None))
-                val rnd = Round(getCRoundCount, msg.coordinators, cfp)
-                val configMsg = Configure(id, instance, rnd)
-                log.debug("{} Configure INSTANCE: {} using ROUND: {}", id, instance, rnd)
-                context.become(proposerBehavior(config, instances + (instance -> phase1A(configMsg, state, config))))
-              })
+      if (msg.coordinators contains self) {
+        log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
+        // Run configure phase (1)
+        implicit val timeout = Timeout(3 seconds)
+        val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
+        cfpSet onComplete {
+          case Success(cfp) => 
+            // Not repropose Nil on the last valid instance, use it to a new value
+            /*val nilReproposalInstances = learnedInstances.complement().dropLast
+            nilReproposalInstances.iterateOverAll(i => {
+              log.info(s"INSTANCE: ${i} - proposed: ${id} sending NIL to himself")
+              self ! Proposal(id, i, round, Some(VMap(id -> Nil)))
+              //FIXME: Maybe send this direct to learners
+              //exec phase2A
+            })*/
+           learnedInstances.complement().iterateOverAll(instance => {
+             val state = instances.getOrElse(instance, ProposerMeta(None, None))
+             val rnd = Round(getCRoundCount, msg.coordinators, cfp)
+             val configMsg = Configure(id, instance, rnd)
+             log.debug("{} Configure INSTANCE: {} using ROUND: {}", id, instance, rnd)
+             context.become(proposerBehavior(config, instances + (instance -> phase1A(configMsg, state, config))))
+           })
 
-            case Failure(ex) => 
-              log.error(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
-              retry(self, msg)
-          }
-        } else {
-          log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
+          case Failure(ex) => 
+            log.error(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
+            retry(self, msg)
         }
       } else {
-        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, settings.QuorumSize)
+        log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
       }
 
     case msg: UpdateRound =>
