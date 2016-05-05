@@ -52,11 +52,22 @@ class MembershipManager extends Actor with ActorLogging {
     }
   }
 
+  def unregister(member: Member): Unit = {
+    if (member.hasRole("cfabcast")) {
+      nodes -= member.address
+    }
+    //TODO update config
+  }
+
+  def runElection(c: ClusterConfiguration) = 
+    leaderOracle ! MemberChange(c, c.proposers.values.toSet)
+
   def receive = registering(ClusterConfiguration())
 
   def registering(config: ClusterConfiguration): Receive = {
     case state: CurrentClusterState =>
       log.info("Singleton Current members: {}", state.members)
+      //FIXME down members still here(state.members) if the singleton crash
       state.members.foreach {
         case m if m.status == MemberStatus.Up => register(m)
       }
@@ -81,7 +92,7 @@ class MembershipManager extends Actor with ActorLogging {
 
     case GiveMeAgents =>
       sender ! GetAgents(self, config)
-
+ 
     case GetAgents(ref: ActorRef, newConfig: ClusterConfiguration) => 
       val actualConfig = config + newConfig
       members += (ref -> newConfig)
@@ -93,28 +104,38 @@ class MembershipManager extends Actor with ActorLogging {
         implicit val timeout = Timeout(3 seconds)
         val futOfDones = refs.map(r => r ? UpdateConfig(actualConfig))
         val allDone = Future.sequence(futOfDones).onComplete {
-          // TODO: explicitly send to leaders ref
-          case Success(s) => leaderOracle ! MemberChange(actualConfig, actualConfig.proposers.values.toSet, minNrOfNodes)
+          case Success(s) => runElection(actualConfig) 
           case Failure(f) => log.error("Something goes wrong: {} ", f)
         }
       }
 
     case MemberRemoved(member, previousStatus) =>
       log.warning("Member {} removed: {} after {}", self, member.address, previousStatus)
-      if (member.hasRole("cfabcast")) {
-        nodes -= member.address
-      }
+      unregister(member)
 
     // TODO: Improve this
     case Terminated(ref) =>
       log.warning("Actor {} terminated, removing config: {}", ref, members(ref))
-      val newConfig = config - members(ref)
+      val downsClusterConfig = members(ref)
+      val newConfig = config - downsClusterConfig
       context.become(registering(newConfig))
       members -= ref
+      implicit val timeout = Timeout(3 seconds)
       val refs = members.keySet
-      //TODO check if the minimum number of nodes has been reached
-      refs.foreach(_ ! UpdateConfig(newConfig))
+      val futOfDones = refs.map(r => r ? UpdateConfig(newConfig))
+      val allDone = Future.sequence(futOfDones).onComplete {
+        case Success(s) =>
+          //FIXME check if the minimum number of nodes has been reached
+          (leaderOracle ? WhoIsLeader) onSuccess {
+            case leader => 
+              log.warning("RUNNING LEADER: {} terminated ref: {}", leader, downsClusterConfig.proposers.values)
+              if (downsClusterConfig.proposers.values.toSet contains leader) runElection(newConfig)
+          }
+        case Failure(f) => log.error("Something goes wrong: {} ", f)
+      }
 
+    case Done =>
+      //FIXME
     case m =>
       log.error("A unknown message [ {} ] received!", m)
   }

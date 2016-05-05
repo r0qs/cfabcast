@@ -65,9 +65,9 @@ case object GiveMeAgents extends Message
 /*
  * Leader Election Messages
  */
-case class MemberChange(config: ClusterConfiguration, notifyTo: Set[ActorRef], waitFor: Int) extends Message
-case class NewLeader(coordinators: Set[ActorRef], until: Int) extends Message
-
+case class MemberChange(config: ClusterConfiguration, notifyTo: Set[ActorRef]) extends Message
+case class NewLeader(coordinators: Set[ActorRef]) extends Message
+case object WhoIsLeader
 /*
  * Collision-fast Oracle Messages
  */

@@ -44,7 +44,8 @@ trait Proposer extends ActorLogging {
         newState
       } else {
         log.warning("INSTANCE: {} - PROPOSAL - {} received proposal {}, but not able to propose. State: {}", msg.instance, id, msg, oldState)
-        //FIXME: Find a better way to do this! 
+        log.warning("INSTANCE: {} - {} - isCFP: {}", msg.instance, id, isCFProposerOf(msg.rnd))
+        //FIXME: Find a better way to do this!
         retryBroadcast(self, Broadcast(msg.value.get(msg.senderId).value.asInstanceOf[Array[Byte]]))
         oldState
       }
@@ -101,6 +102,8 @@ trait Proposer extends ActorLogging {
   def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
     // TODO: verify if sender is a coordinatior, how? i don't really know yet
+    // FIXME: <=  ???
+    // proposer3 - INSTANCE: 0 - PHASE2PREPARE - p3 not update pval, because prnd: < 2; -1394923365; -1326777805 , -1394923365 > is not lower than message ROUND: < 2; -1394923365; -1326777805 , -1394923365 >
     if(prnd < msg.rnd) {
       if(msg.value.get.isEmpty) {
         val newState = oldState.copy(pval = None)
@@ -195,22 +198,31 @@ trait Proposer extends ActorLogging {
     case msg: Learned =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       val learner = sender
-      val vmap = msg.vmap
-      if (vmap == None) {
-        log.error("Learned NOTHING on: {} for instance: {}", learner, msg.instance)
-      } else {
-        state onSuccess {
-          case s => 
-            //TODO verify if proposed value is equals to decided value
-            // Handle case when: java.util.NoSuchElementException: None.get
-            if (vmap.get(id) == s.pval.get(id)) {
-              learnedInstances = learnedInstances.insert(msg.instance) 
-              log.info("Proposer: {} learned: {} in instance: {}", id, learnedInstances, msg.instance)
-            } else {
-              log.error("INSTANCE: {} - Proposed value: {} was NOT LEARNED: {} send by {}", msg.instance, s.pval, vmap, learner)
-              context.stop(self)
+      msg.vmap match {
+        case None => log.error("Learned NOTHING on: {} for instance: {}", learner, msg.instance)
+        case Some(vmap) =>
+          //TODO verify if proposed value is equals to decided value
+          log.debug("Learned VMAP: {}, my state.pval: {}",vmap, state.pval)
+          if (vmap.contains(id)) {
+            learnedInstances = learnedInstances.insert(msg.instance)
+            state onSuccess {
+              case s => 
+                state.pval match {
+                //FIXME set my pval to (px -> Nil) if it is initially None and i'm not a CFP?
+                  case None =>
+                  case Some(pval) =>
+                  //FIXME Handle case when: java.util.NoSuchElementException: None.get
+                  if (vmap.get(id) == pval.get(id)) {
+                    log.info("Proposer: {} learned: {} in instance: {}", id, learnedInstances, msg.instance)
+                  } else {
+                    log.error("INSTANCE: {} - Proposed value: {} was NOT LEARNED: {} send by {}", msg.instance, pval, vmap, learner)
+                    context.stop(self)
+                  }
+                }
             }
-        }
+          } else {
+            log.error("INSTANCE: {} - Received a vmap {} that not contains me: {} send by {}", msg.instance, vmap, id, learner)
+          }
       }
 
     case msg: UpdatePRound => 
@@ -228,8 +240,8 @@ trait Proposer extends ActorLogging {
       //TODO: Update the prnd with the new coordinator
       //prnd = prnd.copy(coordinator = rnd.coordinator)
       coordinators = msg.coordinators
-      if(msg.until <= config.acceptors.size) {
-        log.info("Discovered the minimum of {} acceptors, starting protocol instance.", msg.until)
+      if(config.acceptors.size >= settings.QuorumSize) {
+        log.info("Discovered {} acceptors, starting protocol instance with QuorumSize:{}", config.acceptors.size, settings.QuorumSize)
         if (msg.coordinators contains self) {
           log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
           // Run configure phase (1)
@@ -261,7 +273,7 @@ trait Proposer extends ActorLogging {
           log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
         }
       } else {
-        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, msg.until)
+        log.debug("Up to {} acceptors, still waiting in Init until {} acceptors discovered.", config.acceptors.size, settings.QuorumSize)
       }
 
     case msg: UpdateRound =>
