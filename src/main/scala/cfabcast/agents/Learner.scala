@@ -104,7 +104,7 @@ trait Learner extends ActorLogging {
         if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorum.existsNotDeliveredValue)
           self ! Deliver(msg.instance, proposerId, Some(pq.value))
       })
-      val decidedVals = VMap.fromList(quorum.getQuorumed(config.quorumSize).flatten)
+      val decidedVals = VMap.fromList(quorum.getQuorumed(settings.QuorumSize).flatten)
       // Replaces values proposed previously by the same proposer on the same instance
       quorumPerInstance += (msg.instance -> quorum)
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))

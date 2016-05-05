@@ -4,7 +4,6 @@ import akka.actor.ActorRef
 import scala.collection.immutable.Map
 
 sealed trait ClusterConfiguration {
-  val quorumSize: Int
   // TODO: Use SortedSet and add Round
   // FIXME: Put this in protocol configuration
   val proposers: Map[AgentId, ActorRef]
@@ -24,7 +23,6 @@ sealed trait ClusterConfiguration {
   // TODO: sort by hashcode/id
   def +(that: ClusterConfiguration) = {
     val c = ClusterConfiguration(
-      this.quorumSize,
       this.proposers ++ that.proposers,
       this.acceptors ++ that.acceptors,
       this.learners ++ that.learners)
@@ -34,7 +32,6 @@ sealed trait ClusterConfiguration {
 
   def -(that: ClusterConfiguration) = {
     val c = ClusterConfiguration(
-      this.quorumSize,
       this.proposers -- that.proposers.keys,
       this.acceptors -- that.acceptors.keys,
       this.learners -- that.learners.keys)
@@ -45,20 +42,18 @@ sealed trait ClusterConfiguration {
 
 object ClusterConfiguration {
   def apply(
-    quorumSize: Int,
     proposers: Map[AgentId, ActorRef],
     acceptors: Map[AgentId, ActorRef], 
     learners: Map[AgentId, ActorRef]): ClusterConfiguration = {
-      val s = SimpleClusterConfiguration(quorumSize, proposers, acceptors, learners)
+      val s = SimpleClusterConfiguration(proposers, acceptors, learners)
       s.reverseAll
       s
     }
-  def apply(quorumSize: Int = 0): ClusterConfiguration =
-    SimpleClusterConfiguration(quorumSize, Map(), Map(), Map())
+  def apply(): ClusterConfiguration =
+    SimpleClusterConfiguration(Map(), Map(), Map())
 }
 
 case class SimpleClusterConfiguration(
-  quorumSize: Int, 
   proposers: Map[AgentId, ActorRef],
   acceptors: Map[AgentId, ActorRef],
   learners: Map[AgentId, ActorRef]) extends ClusterConfiguration
