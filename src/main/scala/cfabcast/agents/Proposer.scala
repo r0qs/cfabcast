@@ -70,7 +70,7 @@ trait Proposer extends ActorLogging {
     // FIXME: change to immutable Map
     val quorum = quorumPerInstance.getOrElse(msg.instance, scala.collection.mutable.Map())
     // FIXME: Enter only one time here! Using == instead of >= defined in the specification
-    if (quorum.size == config.quorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && state.cval == None) {
+    if (quorum.size == settings.QuorumSize && isCoordinatorOf(msg.rnd) && crnd == msg.rnd && state.cval == None) {
       val msgs = quorum.values.asInstanceOf[Iterable[Msg1B]]
       val k = msgs.reduceLeft((a, b) => if(a.vrnd > b.vrnd) a else b).vrnd
       val S = msgs.filter(a => (a.vrnd == k) && (a.vval != None)).map(a => a.vval).toList.flatMap( (e: Option[VMap[AgentId, Values]]) => e)
@@ -139,7 +139,7 @@ trait Proposer extends ActorLogging {
     case msg: Broadcast =>
       //TODO: Use stash to store messages for further processing
       // http://doc.akka.io/api/akka/2.3.12/#akka.actor.Stash
-      if (waitFor <= config.acceptors.size) {
+      if (config.acceptors.size >= settings.QuorumSize) {
         log.debug("Receive proposal: {} from {}", msg.data, sender)
         val value = Value(Some(msg.data))
         // update the grnd
@@ -184,7 +184,7 @@ trait Proposer extends ActorLogging {
           log.error("Coordinator NOT FOUND for round {}", prnd)
         } 
       } else {
-        log.warning("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", config.acceptors.size)
+        log.warning("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", settings.QuorumSize)
       }
 
     case GetState =>
@@ -296,8 +296,6 @@ trait Proposer extends ActorLogging {
 
 class ProposerActor(val id: AgentId) extends Actor with Proposer {
   val settings = Settings(context.system)
-  val waitFor = settings.MinNrOfNodes
-
   // Greatest known round
   var grnd: Round = Round()
   // Proposer current round

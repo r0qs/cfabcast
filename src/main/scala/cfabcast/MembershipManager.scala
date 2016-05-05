@@ -52,7 +52,7 @@ class MembershipManager extends Actor with ActorLogging {
     }
   }
 
-  def receive = registering(ClusterConfiguration(quorumSize))
+  def receive = registering(ClusterConfiguration())
 
   def registering(config: ClusterConfiguration): Receive = {
     case state: CurrentClusterState =>

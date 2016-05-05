@@ -80,7 +80,7 @@ class Node extends Actor with ActorLogging {
 
   val cfproposerOracle = context.actorOf(Props[CFProposerOracle], "cfproposerOracle")
 
-  val myConfig = ClusterConfiguration(quorumSize, proposers, acceptors, learners)
+  val myConfig = ClusterConfiguration(proposers, acceptors, learners)
 
   log.info("Registering Recepcionist on node: {}", nodeId)
   ClusterReceptionistExtension(context.system).registerService(self)
