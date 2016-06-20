@@ -81,6 +81,7 @@ trait Acceptor extends ActorLogging {
       context.become(acceptorBehavior(config, instances + (msg.instance -> phase1B(sender, msg, state, config))))
 
     case msg: Msg1Am =>
+      //FIXME optimize this
       val instancesAccepted = IRange.fromMap(instances)
       log.debug("{} with accepted instances: {} receive {} from {}", id, instancesAccepted, msg, msg.senderId)
       if (instancesAccepted.isEmpty) {

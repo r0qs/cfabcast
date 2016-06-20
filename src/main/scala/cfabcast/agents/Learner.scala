@@ -86,6 +86,7 @@ trait Learner extends ActorLogging {
       var quorum = quorumPerInstance.getOrElse(msg.instance, Quorum[AgentId, Vote]())
       val receivedVMap = msg.value.get
       log.debug("INSTANCE: {} Using policy: {}, with quorum: {}", msg.instance, settings.DeliveryPolicy, quorum)
+      // FIXME do this in future
       receivedVMap.foreach({ case (proposerId, value) =>
         quorum = quorum.vote(proposerId, msg.senderId, VMap(proposerId -> value))
         val pq = quorum.get(proposerId).get
