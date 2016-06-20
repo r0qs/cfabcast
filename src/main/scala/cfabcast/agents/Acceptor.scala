@@ -59,11 +59,13 @@ trait Acceptor extends ActorLogging {
     if (state.rnd < msg.rnd && (msg.rnd.coordinator contains actorSender)) {
       val newState = state.copy(rnd = msg.rnd)
       actorSender ! Msg1B(id, msg.instance, newState.rnd, newState.vrnd, newState.vval)
+      //FIXME: return newstate was not specified in protocol, but round needs to be updated
+      return newState
     } else {
       log.warning("INSTANCE: {} - {} PHASE1B message round: {} < state rnd: {}", msg.instance, id, msg.rnd, state.rnd)
       actorSender ! UpdateRound(msg.instance, state.rnd)
     }
-    state
+    return state
   }
 
   def acceptorBehavior(config: ClusterConfiguration, instances: Map[Instance, AcceptorMeta])(implicit ec: ExecutionContext): Receive = {
