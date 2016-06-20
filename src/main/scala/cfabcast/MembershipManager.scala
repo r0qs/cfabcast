@@ -59,7 +59,8 @@ class MembershipManager extends Actor with ActorLogging {
     //TODO update config
   }
 
-  def runElection(c: ClusterConfiguration) = 
+  def runElection(c: ClusterConfiguration) =
+    // notify all agents! not only proposers, but only proposers do some action(the leader)
     leaderOracle ! MemberChange(c, c.proposers.values.toSet)
 
   def receive = registering(ClusterConfiguration())

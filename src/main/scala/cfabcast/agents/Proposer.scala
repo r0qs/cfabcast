@@ -93,25 +93,20 @@ trait Proposer extends ActorLogging {
     }
   }  
 
-  def phase2Prepare(msg: Msg2S, state: ProposerMeta, config: ClusterConfiguration): ProposerMeta = {
-    // TODO: verify if sender is a coordinatior, how? i don't really know yet
-    // FIXME: <=  ???
+  def phase2Prepare(msg: Msg2S, state: ProposerMeta): ProposerMeta = {
+    //FIXME: round bug?
     // proposer3 - INSTANCE: 0 - PHASE2PREPARE - p3 not update pval, because prnd: < 2; -1394923365; -1326777805 , -1394923365 > is not lower than message ROUND: < 2; -1394923365; -1326777805 , -1394923365 >
     if(prnd < msg.rnd) {
+      checkAndUpdateRound(msg.rnd)
       if(msg.value.get.isEmpty) {
-        val newState = state.copy(pval = None)
-        checkAndUpdateRound(msg.rnd)
-        newState
-      } else {
-        val newState = state.copy(pval = msg.value)
-        checkAndUpdateRound(msg.rnd)
-        newState
+        return state.copy(pval = None)
       }
-    } else {
-      log.debug("INSTANCE: {} - PHASE2PREPARE - {} not update pval, because prnd: {} is not lower than message ROUND: {}", msg.instance, id, prnd, msg.rnd)
-      state
+      return state.copy(pval = msg.value)
     }
+    log.debug("INSTANCE: {} - PHASE2PREPARE - {} not update pval, because prnd: {} is not lower than message ROUND: {}", msg.instance, id, prnd, msg.rnd)
+    return state
   }
+  
 
   def checkAndUpdateRound(round: Round) = {
     log.info("{} - My prnd: {} crnd: {} -- Updating to prnd and crnd: {}", id, prnd, crnd, round)
@@ -268,7 +263,7 @@ trait Proposer extends ActorLogging {
         log.debug(s"NOT UPDATE ROUND GRND: {} because is greater than MSG.RND: {}", grnd, msg.rnd)
       }
         
-    case msg: Msg2A =>
+    case msg: Msg2A =>//quorum for 2a
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       updateInstance(msg.instance)
       val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
@@ -288,7 +283,7 @@ trait Proposer extends ActorLogging {
     case msg: Msg2S =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       val state = instances.getOrElse(msg.instance, ProposerMeta(None, None))
-      context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state, config))))
+      context.become(proposerBehavior(config, instances + (msg.instance -> phase2Prepare(msg, state))))
 
     case msg: UpdateConfig =>
       context.become(proposerBehavior(msg.config, instances))
@@ -296,6 +291,8 @@ trait Proposer extends ActorLogging {
   }
 }
 
+
+//FIXME: propose a value in pval, vide phase2prepare
 class ProposerActor(val id: AgentId) extends Actor with Proposer {
   val settings = Settings(context.system)
   // Greatest known round
