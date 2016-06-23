@@ -32,7 +32,7 @@ class CFABCastSettings(config: Config) extends Extension {
   val MinNrOfAgentsOfRole: Map[String, Int] = {
     import scala.collection.JavaConverters._
     cc.getConfig("role").root.asScala.collect {
-      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getInt("min-nr-of-agents"))
+      case (key, value: ConfigObject) => (key -> value.toConfig.getInt("min-nr-of-agents"))
     }.toMap
   }
  
@@ -44,7 +44,7 @@ class CFABCastSettings(config: Config) extends Extension {
   val NrOfAgentsOfRoleOnNode: Map[String, Int] = {
     import scala.collection.JavaConverters._
     nc.root.asScala.collect {
-      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getInt("nr-of-agents"))
+      case (key, value: ConfigObject) => (key -> value.toConfig.getInt("nr-of-agents"))
     }.toMap
   }
   
@@ -60,21 +60,21 @@ class CFABCastSettings(config: Config) extends Extension {
   val ProposerIdsByName: Map[String, String] = {
     import scala.collection.JavaConverters._
     pc.root.asScala.collect {
-      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getString("id"))
+      case (key, value: ConfigObject) => (key -> value.toConfig.getString("id"))
     }.toMap
   }
 
   val LearnerIdsByName: Map[String, String] = {
     import scala.collection.JavaConverters._
     lc.root.asScala.collect {
-      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getString("id"))
+      case (key, value: ConfigObject) => (key -> value.toConfig.getString("id"))
     }.toMap
   }
 
   val AcceptorIdsByName: Map[String, String] = {
     import scala.collection.JavaConverters._
     ac.root.asScala.collect {
-      case (key, value: ConfigObject) ⇒ (key -> value.toConfig.getString("id"))
+      case (key, value: ConfigObject) => (key -> value.toConfig.getString("id"))
     }.toMap
   }
 }

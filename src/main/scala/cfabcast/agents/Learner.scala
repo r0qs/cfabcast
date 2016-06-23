@@ -15,7 +15,7 @@ import akka.actor._
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta])(implicit ec: ExecutionContext): Future[LearnerMeta] = 
+  def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = 
     async {
       val oldState = await(state)
       if(quorumed.nonEmpty) {
@@ -87,7 +87,7 @@ trait Learner extends ActorLogging {
           pPerInstance += (msg.instance -> (p ++ msg.value.get))
           val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
           val nilVmaps = pPerInstance(msg.instance)
-          context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(nilVmaps, msg.instance, state))))
+          context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(nilVmaps, msg.instance, state, config))))
         }
       } else {
         log.error("INSTANCE: {} - {} value {} not contain {}", msg.instance, id, msg.value.get, msg.senderId)
@@ -108,7 +108,7 @@ trait Learner extends ActorLogging {
       // Replaces values proposed previously by the same proposer on the same instance
       quorumPerInstance += (msg.instance -> quorum)
       val state = instances.getOrElse(msg.instance, Future.successful(LearnerMeta(Some(VMap[AgentId, Values]()))))
-      context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(decidedVals, msg.instance, state))))
+      context.become(learnerBehavior(config, instances + (msg.instance -> preLearn(decidedVals, msg.instance, state, config))))
 
     case GetIntervals =>
       sender ! TakeIntervals(instancesLearned)
