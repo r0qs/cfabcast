@@ -35,8 +35,12 @@ trait Learner extends ActorLogging {
           val notDelivered = quorumPerInstance.getOrElse(instance, Quorum[AgentId, Vote]()).existsNotDeliveredValue
           if (settings.DeliveryPolicy == "optimistic" && notDelivered) {
             quorumed.foreach({ case (proposerId , value) =>
-              if (value != Nil) //TODO: only do this if the value was not delivered
-                self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
+              config.proposers.get(proposerId) match {
+                case Some(ref) => ref ! Learned(instance, Some(VMap(proposerId -> value)))
+                                  if (value != Nil)
+                                    self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
+                case None => log.error("Proposer actorRef not found!")
+              }
             })
           } else if (newState.learned.get.isComplete(domain) && notDelivered) {
             // Default policy
