@@ -202,12 +202,12 @@ trait Proposer extends ActorLogging {
         case None => log.error("Learned NOTHING on: {} for instance: {}", learner, msg.instance)
         case Some(vmap) =>
           //TODO verify if proposed value is equals to decided value
-          log.debug("Learned VMAP: {}, my state.pval: {}",vmap, state.pval)
           if (vmap.contains(id)) {
             learnedInstances = learnedInstances.insert(msg.instance)
             state onSuccess {
               case s => 
-                state.pval match {
+                log.debug("Learned VMAP: {}, my state.pval: {}",vmap, s.pval)
+                s.pval match {
                 //FIXME set my pval to (px -> Nil) if it is initially None and i'm not a CFP?
                   case None =>
                   case Some(pval) =>
@@ -256,7 +256,7 @@ trait Proposer extends ActorLogging {
               //exec phase2A
             })*/
            learnedInstances.complement().iterateOverAll(instance => {
-             val state = instances.getOrElse(instance, ProposerMeta(None, None))
+             val state = instances.getOrElse(instance, Future.successful(ProposerMeta(None, None)))
              val rnd = Round(getCRoundCount, msg.coordinators, cfp)
              val configMsg = Configure(id, instance, rnd)
              log.debug("{} Configure INSTANCE: {} using ROUND: {}", id, instance, rnd)
