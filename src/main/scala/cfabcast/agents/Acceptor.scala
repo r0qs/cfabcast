@@ -22,6 +22,7 @@ trait Acceptor extends ActorLogging {
       if ((!msg.value.get.isEmpty && oldState.vrnd < msg.rnd) || oldState.vval == None) {
         val newState = oldState.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = msg.value)
         config.learners.values foreach (_ ! Msg2B(id, msg.instance, newState.rnd, newState.vval))
+        log.info("INSTANCE: {} - ROUND: {} - PHASE2B - {} accept COORDINATOR VALUE: {}", msg.instance, msg.rnd, id, newState.vval)
         newState
       } else {
         oldState
@@ -47,7 +48,7 @@ trait Acceptor extends ActorLogging {
         }
         val newState = oldState.copy(rnd = msg.rnd, vrnd = msg.rnd, vval = Some(value))
         config.learners.values foreach (_ ! Msg2B(id, msg.instance, msg.rnd, newState.vval))
-        log.debug("INSTANCE: {} - ROUND: {} - PHASE2B - {} accept VALUE: {}", msg.instance, msg.rnd, id, newState.vval)
+        log.info("INSTANCE: {} - ROUND: {} - PHASE2B - {} accept PROPOSED VALUE: {}", msg.instance, msg.rnd, id, newState.vval)
         newState
       } else {
         log.warning("INSTANCE: {} - {} PHASE2B2 message round: {} < state rnd: {}", msg.instance, id, msg.rnd, oldState.rnd)

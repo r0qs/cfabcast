@@ -40,6 +40,7 @@ trait Proposer extends ActorLogging {
       if ((isCFProposerOf(msg.rnd) && prnd == msg.rnd && oldState.pval == None) && msg.value.get(msg.senderId) != Nil) {
         // Phase 2A for CFProposers
         val newState = oldState.copy(pval = msg.value)
+        log.info("INSTANCE: {} - ROUND: {} - PROPOSE ({})- VALUE: {}", msg.instance, msg.rnd, id, newState.pval)
         ((msg.rnd.cfproposers diff Set(self)) union config.acceptors.values.toSet).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, msg.value)) 
         newState
       } else {
@@ -101,20 +102,16 @@ trait Proposer extends ActorLogging {
 
   def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
-    // TODO: verify if sender is a coordinatior, how? i don't really know yet
     // FIXME: <=  ???
-    // proposer3 - INSTANCE: 0 - PHASE2PREPARE - p3 not update pval, because prnd: < 2; -1394923365; -1326777805 , -1394923365 > is not lower than message ROUND: < 2; -1394923365; -1326777805 , -1394923365 >
+    // ROUND BUG: proposer3 - INSTANCE: 0 - PHASE2PREPARE - p3 not update pval, because prnd: < 2; -1394923365; -1326777805 , -1394923365 > is not lower than message ROUND: < 2; -1394923365; -1326777805 , -1394923365 >
     if(prnd < msg.rnd) {
+      //FIXME: improve this update
+      self ! UpdatePRound(msg.rnd, crnd)
+      log.info("Proposer {} READY in ROUND: {}", id, msg.rnd)
       if(msg.value.get.isEmpty) {
-        val newState = oldState.copy(pval = None)
-        // TODO: improve round updates!!!!
-        // maybe a future pipeTo self is better option
-        self ! UpdatePRound(msg.rnd, crnd)
-        newState
+        oldState.copy(pval = None)
       } else {
-        val newState = oldState.copy(pval = msg.value)
-        self ! UpdatePRound(msg.rnd, crnd)
-        newState
+        oldState.copy(pval = msg.value)
       }
     } else {
       log.debug("INSTANCE: {} - PHASE2PREPARE - {} not update pval, because prnd: {} is greater than message ROUND: {}", msg.instance, id, prnd, msg.rnd)
@@ -156,7 +153,7 @@ trait Proposer extends ActorLogging {
             } else if (proposed <= greatestInstance) {
               proposed = greatestInstance + 1
             }
-            log.info("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
+            log.debug("Proposer: {} -> DECIDED= {} , PROPOSED= {}", id, learnedInstances, proposed)
             // If not proposed and not learned nothing yet in this instance
             val vmap: Option[VMap[AgentId, Values]] = Some(VMap(id -> value))
             var instance = learnedInstances.next
@@ -222,6 +219,7 @@ trait Proposer extends ActorLogging {
             }
           } else {
             log.error("INSTANCE: {} - Received a vmap {} that not contains me: {} send by {}", msg.instance, vmap, id, learner)
+            context.stop(self)
           }
       }
 
@@ -241,7 +239,7 @@ trait Proposer extends ActorLogging {
       //prnd = prnd.copy(coordinator = rnd.coordinator)
       coordinators = msg.coordinators
       if (msg.coordinators contains self) {
-        log.debug("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
+        log.info("Iam a LEADER! My id is: {} - HASHCODE: {}", id, self.hashCode)
         // Run configure phase (1)
         implicit val timeout = Timeout(3 seconds)
         val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
@@ -267,7 +265,7 @@ trait Proposer extends ActorLogging {
             retry(self, msg)
         }
       } else {
-        log.debug("Iam NOT the LEADER! My id is {} - {}", id, self)
+        log.info("Iam NOT the LEADER! My id is {} - {}", id, self)
       }
 
     case msg: UpdateRound =>
