@@ -9,7 +9,6 @@ import scala.concurrent.ExecutionContext
 import scala.util.{Success, Failure}
 import scala.async.Async.{async, await}
 import collection.concurrent.TrieMap
-
 import akka.actor._
 
 trait Learner extends ActorLogging {
@@ -25,6 +24,7 @@ trait Learner extends ActorLogging {
         val lubVals: VMap[AgentId, Values] = VMap.lub(slub)
         val newState = oldState.copy(learned = Some(lubVals))
         if (newState.learned.get.size > oldState.learned.get.size) {
+          log.info("INSTANCE: {} - LEARN - {} VALUE: {}", instance, id, newState.learned)
             //FIXME: This ins't thread-safe
             /* try {
               instancesLearned = instancesLearned.insert(instance)
@@ -37,8 +37,9 @@ trait Learner extends ActorLogging {
             quorumed.foreach({ case (proposerId , value) =>
               config.proposers.get(proposerId) match {
                 case Some(ref) => ref ! Learned(instance, Some(VMap(proposerId -> value)))
-                                  if (value != Nil)
+                                  if (value != Nil) {
                                     self ! Deliver(instance, proposerId, Some(VMap(proposerId -> value)))
+                                  }
                 case None => log.error("Proposer actorRef not found!")
               }
             })
@@ -71,7 +72,6 @@ trait Learner extends ActorLogging {
       if (!delivered) {
         quorumPerInstance(instance).setDelivered(proposerId)
         log.debug("{} deliver of vmap: {} in instance:{} quorum:{}", settings.DeliveryPolicy, learned, instance, quorumPerInstance)
-        context.actorSelection("../proposer*") ! Learned(instance, learned)
         context.parent ! DeliveredVMap(learned)
       }
       /*else {
@@ -101,8 +101,9 @@ trait Learner extends ActorLogging {
       receivedVMap.foreach({ case (proposerId, value) =>
         quorum = quorum.vote(proposerId, msg.senderId, VMap(proposerId -> value))
         val pq = quorum.get(proposerId).get
-        if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorum.existsNotDeliveredValue)
+        if(settings.DeliveryPolicy == "super-optimistic" && pq.count == 1 && quorum.existsNotDeliveredValue) {
           self ! Deliver(msg.instance, proposerId, Some(pq.value))
+        }
       })
       val decidedVals = VMap.fromList(quorum.getQuorumed(settings.QuorumSize).flatten)
       // Replaces values proposed previously by the same proposer on the same instance
