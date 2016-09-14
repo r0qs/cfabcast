@@ -4,9 +4,8 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
-import scala.concurrent.Await
 import scala.util.Random
 import scala.concurrent.duration._
 import scala.util.{Success, Failure}
@@ -15,7 +14,6 @@ import scala.async.Async.{async, await}
 import akka.actor._
 import akka.pattern.ask
 import akka.util.Timeout
-import akka.pattern.AskTimeoutException
 
 trait Proposer extends ActorLogging {
   this: ProposerActor =>
@@ -33,7 +31,7 @@ trait Proposer extends ActorLogging {
       oldState
     }
   }
-  
+
   def propose(msg: Proposal, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
     if (msg.value.get.contains(msg.senderId)) {
@@ -41,7 +39,7 @@ trait Proposer extends ActorLogging {
         // Phase 2A for CFProposers
         val newState = oldState.copy(pval = msg.value)
         log.info("INSTANCE: {} - ROUND: {} - PROPOSE ({})- VALUE: {}", msg.instance, msg.rnd, id, newState.pval)
-        ((msg.rnd.cfproposers diff Set(self)) union config.acceptors.values.toSet).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, msg.value)) 
+        ((msg.rnd.cfproposers diff Set(self)) union config.acceptors.values.toSet).foreach(_ ! Msg2A(id, msg.instance, msg.rnd, msg.value))
         newState
       } else {
         log.warning("INSTANCE: {} - PROPOSAL - {} received proposal {}, but not able to propose. State: {}", msg.instance, id, msg, oldState)
@@ -55,7 +53,7 @@ trait Proposer extends ActorLogging {
       oldState
     }
   }
- 
+
   def phase2A(msg: Msg2A, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
     if (msg.value.get.contains(msg.senderId)) {
@@ -88,7 +86,7 @@ trait Proposer extends ActorLogging {
         newState
       } else {
         var value = VMap[AgentId, Values]()
-        for (p <- config.proposers.keys) value += (p -> Nil) 
+        for (p <- config.proposers.keys) value += (p -> Nil)
         val cval: VMap[AgentId, Values] = value ++: VMap.lub(S) //preserve S values
         val newState = oldState.copy(cval = Some(cval))
         (config.proposers.values.toSet union config.acceptors.values.toSet).foreach(_ ! Msg2S(id, msg.instance, msg.rnd, Some(cval)))
@@ -98,7 +96,7 @@ trait Proposer extends ActorLogging {
       log.debug("INSTANCE: {} - PHASE2START - {} not meet the quorum requirements with MSG ROUND: {} with state: {}", msg.instance, id, msg.rnd, oldState)
       oldState
     }
-  }  
+  }
 
   def phase2Prepare(msg: Msg2S, state: Future[ProposerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[ProposerMeta] = async {
     val oldState = await(state)
@@ -123,11 +121,11 @@ trait Proposer extends ActorLogging {
 
   def getCRoundCount: Int = if(crnd < grnd) grnd.count + 1 else crnd.count + 1
 
-  def retryBroadcast(replyTo: ActorRef, message: CFABCastMessage, delay: FiniteDuration = 0 seconds)(implicit ec: ExecutionContext): Unit = { 
+  def retryBroadcast(replyTo: ActorRef, message: CFABCastMessage, delay: FiniteDuration = 0 seconds)(implicit ec: ExecutionContext): Unit = {
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
-  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 0 seconds)(implicit ec: ExecutionContext): Unit = { 
+  def retry(replyTo: ActorRef, message: Message, delay: FiniteDuration = 0 seconds)(implicit ec: ExecutionContext): Unit = {
     val cancelable = context.system.scheduler.scheduleOnce(delay, replyTo, message)
   }
 
@@ -178,20 +176,20 @@ trait Proposer extends ActorLogging {
         } else {
           //TODO: Stash proposal and do leader election!
           log.error("Coordinator NOT FOUND for round {}", prnd)
-        } 
+        }
       } else {
         log.warning("Receive a Broadcast Message, but not have sufficient acceptors: [{}]. Discarting...", settings.QuorumSize)
       }
 
     case GetState =>
       //TODO: async here!
-      instances.foreach({case (instance, state) => 
+      instances.foreach({case (instance, state) =>
         state onComplete {
           case Success(s) => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
           case Failure(f) => log.error("INSTANCE: {} -- {} -- FUTURE FAIL: {}", instance, id, f)
         }
       })
- 
+
     case msg: Learned =>
       val state = instances.getOrElse(msg.instance, Future.successful(ProposerMeta(None, None)))
       val learner = sender
@@ -202,7 +200,7 @@ trait Proposer extends ActorLogging {
           if (vmap.contains(id)) {
             learnedInstances = learnedInstances.insert(msg.instance)
             state onSuccess {
-              case s => 
+              case s =>
                 log.debug("Learned VMAP: {}, my state.pval: {}",vmap, s.pval)
                 s.pval match {
                 //FIXME set my pval to (px -> Nil) if it is initially None and i'm not a CFP?
@@ -223,7 +221,7 @@ trait Proposer extends ActorLogging {
           }
       }
 
-    case msg: UpdatePRound => 
+    case msg: UpdatePRound =>
       log.info("{} - My prnd: {} crnd: {} -- Updating to prnd and crnd: {}", id, prnd, crnd, msg)
       if(prnd < msg.prnd) {
         prnd = msg.prnd
@@ -244,7 +242,7 @@ trait Proposer extends ActorLogging {
         implicit val timeout = Timeout(3 seconds)
         val cfpSet: Future[Set[ActorRef]] = ask(context.parent, GetCFPs).mapTo[Set[ActorRef]]
         cfpSet onComplete {
-          case Success(cfp) => 
+          case Success(cfp) =>
             // Not repropose Nil on the last valid instance, use it to a new value
             /*val nilReproposalInstances = learnedInstances.complement().dropLast
             nilReproposalInstances.iterateOverAll(i => {
@@ -260,7 +258,7 @@ trait Proposer extends ActorLogging {
              log.debug("{} Configure INSTANCE: {} using ROUND: {}", id, instance, rnd)
              context.become(proposerBehavior(config, instances + (instance -> phase1A(configMsg, state, config))))
            })
-          case Failure(ex) => 
+          case Failure(ex) =>
             log.error(s"{} found no Collision-fast Proposers. Because of a {}", self, ex.getMessage)
             retry(self, msg)
         }
@@ -277,7 +275,7 @@ trait Proposer extends ActorLogging {
       } else {
         log.debug(s"NOT UPDATE ROUND GRND: {} because is greater than MSG.RND: {}", grnd, msg.rnd)
       }
-        
+
     case msg: Msg2A =>
       log.debug("INSTANCE: {} - {} receive {} from {}", msg.instance, id, msg, msg.senderId)
       updateInstance(msg.instance)
@@ -315,11 +313,11 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
   var prnd: Round = Round()
   // Coordinator current round
   var crnd: Round = Round()
- 
+
   // FIXME: This need to be Long?
   var proposed: Int = -1;
-  var greatestInstance: Int = -1; 
-  var learnedInstances: IRange = IRange() 
+  var greatestInstance: Int = -1;
+  var learnedInstances: IRange = IRange()
 
   var coordinators: Set[ActorRef] = Set()
 
@@ -339,4 +337,3 @@ class ProposerActor(val id: AgentId) extends Actor with Proposer {
 object ProposerActor {
   def props(id: AgentId) : Props = Props(classOf[ProposerActor], id)
 }
-

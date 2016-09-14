@@ -1,16 +1,14 @@
 package cfabcast
 
-import akka.cluster.{ Member, Cluster, MemberStatus }
-import akka.actor.{ Actor, ActorRef, ActorSystem }
-import akka.actor.{ Address, ActorPath, ActorIdentity, Identify, RootActorPath }
+import akka.cluster.{ Cluster, MemberStatus }
+import akka.actor.{ Actor, ActorRef }
+import akka.actor.{ Address, ActorPath, RootActorPath }
 import akka.actor.Props
 import akka.actor.ActorLogging
-import akka.actor.Terminated
 import akka.cluster.ClusterEvent._
 import akka.actor.ExtendedActorSystem
-import com.typesafe.config.ConfigFactory
-import akka.contrib.pattern.ClusterReceptionistExtension
-import akka.actor.SupervisorStrategy.{Restart, Stop}
+import akka.cluster.client.ClusterClientReceptionist
+import akka.actor.SupervisorStrategy.{ Restart, Stop }
 import akka.actor.OneForOneStrategy
 
 //import scala.concurrent.ExecutionContext.Implicits.global
@@ -83,7 +81,7 @@ class Node extends Actor with ActorLogging {
   val myConfig = ClusterConfiguration(proposers, acceptors, learners)
 
   log.info("Registering Recepcionist on node: {}", nodeId)
-  ClusterReceptionistExtension(context.system).registerService(self)
+  ClusterClientReceptionist(context.system).registerService(self)
 
   // Subscribe to cluster changes, MemberUp
   override def preStart(): Unit = {

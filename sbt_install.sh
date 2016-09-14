@@ -5,7 +5,7 @@
 # Requires Java runtime!
 
 # Over proxy, uncomment this line with your proxy settings
-export SBT_OPTS="$SBT_OPTS -Dhttp.proxyHost=proxy.ufu.br -Dhttp.proxyPort=3128"
+#export SBT_OPTS="$SBT_OPTS -Dhttp.proxyHost=proxy.ufu.br -Dhttp.proxyPort=3128"
 
 wget -c -O - https://dl.bintray.com/sbt/native-packages/sbt/0.13.9/sbt-0.13.9.tgz | tar -xvzf -
 

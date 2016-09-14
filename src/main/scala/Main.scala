@@ -1,8 +1,5 @@
 import akka.actor._
-import akka.util.Timeout
-import akka.pattern.ask
-import akka.contrib.pattern.ClusterSingletonManager
-
+import akka.cluster.singleton.{ ClusterSingletonManager, ClusterSingletonManagerSettings }
 import com.typesafe.config.ConfigFactory
 
 import cfabcast._
@@ -14,7 +11,7 @@ object Main {
     val defaultConfig = ConfigFactory.load()
 
     val minNrOfNodes= defaultConfig.getConfig("cfabcast").getInt("min-nr-of-nodes")
-    
+
     val nodeConfig = defaultConfig.getConfig(s"cfabcast.nodes.${nodeName}")
     val hostname = nodeConfig.getString("hostname")
     val port = nodeConfig.getString("port")
@@ -28,7 +25,7 @@ object Main {
       }
       akka.cluster.roles = [cfabcast]
       akka.cluster.role {
-        cfabcast.min-nr-of-members = ${minNrOfNodes} 
+        cfabcast.min-nr-of-members = ${minNrOfNodes}
       }
 
       cfabcast.node-id = ${nodeName}
@@ -38,9 +35,8 @@ object Main {
     val node = system.actorOf(Props[Node], "node")
     val singleton = system.actorOf(ClusterSingletonManager.props(
         singletonProps = Props[MembershipManager],
-        singletonName = "active",
         terminationMessage = PoisonPill,
-        role = Some("cfabcast")),
+        settings = ClusterSingletonManagerSettings(system).withRole("cfabcast")),
         name = "manager")
 
     //For test:
@@ -48,4 +44,3 @@ object Main {
     node ! StartConsole
   }
 }
-

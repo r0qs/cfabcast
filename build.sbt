@@ -7,9 +7,9 @@ organization := "cfabcast"
 
 version := "0.1-SNAPSHOT"
 
-scalaVersion := "2.11.7"
+scalaVersion := "2.11.8"
 
-val akkaVersion = "2.3.14"
+val akkaVersion = "2.4.10"
 
 val kamonVersion = "0.5.1"
 
@@ -28,7 +28,7 @@ scalacOptions in Global ++= Seq(
   "-Ywarn-value-discard",
   "-Ywarn-unused-import",
   "-language:_",
-  "-target:jvm-1.7"
+  "-target:jvm-1.8"
 )
 
 //production
@@ -39,8 +39,8 @@ javaOptions in run ++= Seq("-Xms512M", "-Xmx512M", "-Xss1M", "-XX:+CMSClassUnloa
 
 //TODO: update to jre 1.8
 javacOptions ++= Seq(
-  "-source", "1.7",
-  "-target", "1.7",
+  "-source", "1.8",
+  "-target", "1.8",
   "-Xlint:unchecked",
   "-Xlint:deprecation"
 )
@@ -54,12 +54,16 @@ resolvers ++= Seq(
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion,
-  "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
   "com.typesafe.akka" %% "akka-contrib" % akkaVersion,
-  "com.typesafe.akka" %% "akka-persistence-experimental" % akkaVersion,
+  "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
+  "com.typesafe.akka" %% "akka-cluster-metrics" % akkaVersion,
+  "com.typesafe.akka" %% "akka-cluster-tools" % akkaVersion,
+  "com.typesafe.akka" %% "akka-persistence" % akkaVersion,
   "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
   "com.github.romix.akka" %% "akka-kryo-serialization" % "0.3.3",
-  "org.scala-lang.modules" %%	"scala-async" % "0.9.5", 
+  "org.scala-lang.modules" %%	"scala-async" % "0.9.5",
+  "org.iq80.leveldb" % "leveldb" % "0.7",
+  "org.fusesource.leveldbjni" % "leveldbjni-all" % "1.8",
   "ch.qos.logback" % "logback-classic" % "1.1.3",
   "org.scalatest" %% "scalatest" % "2.2.1" % "test"
 )
@@ -128,4 +132,3 @@ publishTo <<= version { (v: String) =>
   else
     Some(Resolver.file("Releases", file("../maven-repo/releases/")))
 }
-

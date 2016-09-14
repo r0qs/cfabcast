@@ -2,7 +2,6 @@ package cfabcast.serialization
 
 import akka.serialization.Serializer
 import akka.actor.ExtendedActorSystem
-import akka.serialization.Serialization
 import akka.serialization.SerializationExtension
 
 class CFABCastSerializer(val system: ExtendedActorSystem) extends Serializer {

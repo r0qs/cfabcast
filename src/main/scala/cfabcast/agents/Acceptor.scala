@@ -4,10 +4,9 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 
-import scala.concurrent.{ Future, Promise}
+import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import scala.util.{Success, Failure}
-import scala.util.Random
 import scala.async.Async.{async, await}
 
 import akka.actor._

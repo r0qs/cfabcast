@@ -4,26 +4,25 @@ import collection.immutable._
 import scala.collection.mutable.{Builder, MapBuilder}
 import scala.collection.generic.{ CanBuildFrom, ImmutableMapFactory}
 import java.io._
-import scala.collection.GenTraversableOnce
 
 abstract class Values extends Serializable {
   type T
   val value: T
-  
+
   override def toString: String = value.toString
 }
 
 class Value private extends Values {
   type T = Option[Array[Byte]]
   val value: T = None
-  
+
   override def equals(other : Any) : Boolean = other match {
     case that : Value => (this.canEqual(that) && java.util.Arrays.equals(this.value.get, that.value.get))
     case _ => false
   }
-  
+
   def canEqual(other : Any) : Boolean = other.isInstanceOf[Value]
-  
+
 /*  override def toString: String = {
     val v = this.value.getOrElse(Array[Byte]())
     if(v == null) "None" else java.util.Arrays.asList(v:_*).toString
@@ -46,13 +45,13 @@ object Nil extends Values{
 // Map a AgentId identifier to a Value
 class VMap[A, +B] private(val underlying: Map[A, B])
   extends Map[A, B]
-  with MapLike[A, B, VMap[A, B]] 
+  with MapLike[A, B, VMap[A, B]]
   with Serializable {
 
   def +[B1 >: B](kv: (A, B1)) = new VMap(underlying + kv)
-  
+
   def -(key: A) = new VMap(underlying - key)
-  
+
   def get(key: A) = underlying.get(key)
 
   def iterator = underlying.iterator
@@ -97,14 +96,14 @@ object VMap extends ImmutableMapFactory[VMap] {
     vm
   }
 
-  def fromList[A, B](s: List[(A, B)]): VMap[A, B] = 
+  def fromList[A, B](s: List[(A, B)]): VMap[A, B] =
     (newBuilder[A, B] ++= s).result()
 
   override def newBuilder[A, B]: Builder[(A, B), VMap[A, B]] =
     new MapBuilder[A, B, VMap[A, B]](empty[A, B])
-  
+
   implicit def canBuildFrom[A, B]
-    : CanBuildFrom[Coll, (A, B), VMap[A, B]] = 
+    : CanBuildFrom[Coll, (A, B), VMap[A, B]] =
       new CanBuildFrom[Coll, (A, B), VMap[A, B]] {
         def apply(from: Coll) = newBuilder[A, B]
         def apply() = newBuilder
@@ -120,7 +119,7 @@ object VMap extends ImmutableMapFactory[VMap] {
       else false
     }
   }
-  
+
   def lub[A, B](s: List[VMap[A, B]]) = fromList[A, B](s.flatten)
-  
+
 }

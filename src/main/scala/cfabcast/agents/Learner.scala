@@ -4,7 +4,7 @@ import cfabcast._
 import cfabcast.messages._
 import cfabcast.protocol._
 
-import scala.concurrent.{Future, Promise}
+import scala.concurrent.Future
 import scala.concurrent.ExecutionContext
 import scala.util.{Success, Failure}
 import scala.async.Async.{async, await}
@@ -14,7 +14,7 @@ import akka.actor._
 trait Learner extends ActorLogging {
   this: LearnerActor =>
 
-  def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] = 
+  def preLearn(quorumed: VMap[AgentId, Values], instance: Instance, state: Future[LearnerMeta], config: ClusterConfiguration)(implicit ec: ExecutionContext): Future[LearnerMeta] =
     async {
       val oldState = await(state)
       if(quorumed.nonEmpty) {
@@ -29,7 +29,7 @@ trait Learner extends ActorLogging {
             /* try {
               instancesLearned = instancesLearned.insert(instance)
             } catch {
-            case e: ElementAlreadyExistsException => 
+            case e: ElementAlreadyExistsException =>
               log.warning(s"Instance ${instance} already learned by ${id} with vmap: ${newState.learned}")
             }*/
           val notDelivered = quorumPerInstance.getOrElse(instance, Quorum[AgentId, Vote]()).existsNotDeliveredValue
@@ -47,16 +47,16 @@ trait Learner extends ActorLogging {
             // Default policy
             deliver(instance, newState.learned)
           }
-        } 
+        }
         newState
       } else {
         log.debug("INSTANCE: {} - MSG2B - {} Quorum requirements not satisfied: {}", instance, id, quorumed)
         oldState
-      }   
+      }
     }
 
   def deliver(instance: Instance, learned: Option[VMap[AgentId, Values]]): Unit = {
-    learned.get.foreach({ case(proposerId, _) => 
+    learned.get.foreach({ case(proposerId, _) =>
       quorumPerInstance(instance).setDelivered(proposerId)
     })
     log.debug("{} deliver of vmap: {} in instance:{} quorum:{}", settings.DeliveryPolicy, learned, instance, quorumPerInstance)
@@ -116,7 +116,7 @@ trait Learner extends ActorLogging {
       sender ! TakeIntervals(instancesLearned)
 
     case GetState =>
-      instances.foreach({case (instance, state) => 
+      instances.foreach({case (instance, state) =>
         state onComplete {
           case Success(s) => log.info("INSTANCE: {} -- {} -- STATE: {}", instance, id, s)
           case Failure(f) => log.error("INSTANCE: {} -- {} -- FUTURE FAIL: {}", instance, id, f)
@@ -149,4 +149,3 @@ class LearnerActor(val id: AgentId) extends Actor with Learner {
 object LearnerActor {
   def props(id: AgentId) : Props = Props(classOf[LearnerActor], id)
 }
-

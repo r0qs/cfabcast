@@ -8,7 +8,6 @@ import akka.actor.ExtendedActorSystem
 import akka.util.Helpers.Requiring
 import akka.japi.Util.immutableSeq
 
-import scala.collection.immutable
 import scala.collection.JavaConverters._
 
 import com.typesafe.config.Config
@@ -19,7 +18,7 @@ class CFABCastSettings(config: Config) extends Extension {
   private val cc = config.getConfig("cfabcast")
 
   //val Roles: Set[String] = immutableSeq(config.getStringList("akka.cluster.roles")).toSet
-  
+
   val MinNrOfNodes: Int = {
     cc.getInt("min-nr-of-nodes")
   } requiring (_ > 0, "min-nr-of-nodes must be > 0")
@@ -51,7 +50,7 @@ class CFABCastSettings(config: Config) extends Extension {
       case (key, value: ConfigObject) => (key -> value.toConfig.getInt("nr-of-agents"))
     }.toMap
   }
-  
+
   val ProtocolRoles: Set[String] = immutableSeq(nc.getStringList("roles")).toSet
 
   // Agents configuration
@@ -83,9 +82,9 @@ class CFABCastSettings(config: Config) extends Extension {
 
 object Settings extends ExtensionId[CFABCastSettings] with ExtensionIdProvider {
   override def lookup = Settings
-  
+
   override def createExtension(system: ExtendedActorSystem) = new CFABCastSettings(system.settings.config)
-  
+
   /**
    * Java API: retrieve the Settings extension for the given system.
    */
