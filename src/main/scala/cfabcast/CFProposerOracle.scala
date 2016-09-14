@@ -10,7 +10,12 @@ class CFProposerOracle extends Actor with ActorLogging {
   val settings = Settings(context.system)
   def receive = {
     //TODO: do this based on Phi Accrual failure detector
-    case msg: ProposerSet => chooseCFProposers(msg.replyTo, msg.proposersRef)
+    //TODO: mudar msgs para ChooseCFPSet (request) e CFPSet (response)
+    case msg: Proposers =>
+      if (settings.RandomCFPSet)
+        chooseRandomCFProposers(msg.replyTo, msg.proposers.values.toSet)
+      else
+        chooseFixedCFProposers(msg.replyTo, msg.proposers)
   }
 
   def randSet[T](items: Set[T], until: Int = 1): Set[T] = {
@@ -22,12 +27,18 @@ class CFProposerOracle extends Actor with ActorLogging {
       }
     }
     randomChoice(items.toVector, until, Set())
-  }      
+  }
 
-  def chooseCFProposers(replyTo: ActorRef, proposersRef: Set[ActorRef]) = {
-      val n = settings.MinNrOfAgentsOfRole("cfproposer")
+  def chooseRandomCFProposers(replyTo: ActorRef, proposersRef: Set[ActorRef]) = {
+      val n = settings.MinNrOfCFP
       val chosen = randSet[ActorRef](proposersRef, n)
       replyTo ! chosen
-      log.info("The new set of Collision-fast Proposers is: {}", chosen)
+      log.info("The new Random set of Collision-fast Proposers is: {}", chosen)
+  }
+
+  def chooseFixedCFProposers(replyTo: ActorRef, proposers: Map[AgentId, ActorRef]) = {
+    val chosen = settings.FixedCFPSet.map(id => proposers(id))
+    replyTo ! chosen
+    log.info("The new Fixed set of Collision-fast Proposers is: {}", chosen)
   }
 }

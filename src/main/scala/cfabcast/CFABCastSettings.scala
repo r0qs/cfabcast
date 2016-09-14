@@ -9,6 +9,7 @@ import akka.util.Helpers.Requiring
 import akka.japi.Util.immutableSeq
 
 import scala.collection.immutable
+import scala.collection.JavaConverters._
 
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigObject
@@ -30,19 +31,22 @@ class CFABCastSettings(config: Config) extends Extension {
   val DeliveryPolicy: String = cc.getString("delivery-policy")
 
   val MinNrOfAgentsOfRole: Map[String, Int] = {
-    import scala.collection.JavaConverters._
     cc.getConfig("role").root.asScala.collect {
       case (key, value: ConfigObject) => (key -> value.toConfig.getInt("min-nr-of-agents"))
     }.toMap
   }
- 
+
+  val cfpConfig = cc.getConfig("role.cfproposer")
+  val RandomCFPSet: Boolean = cfpConfig.getBoolean("random")
+  val MinNrOfCFP: Int = cfpConfig.getInt("min-nr-of-agents")
+  val FixedCFPSet: Set[String] = immutableSeq(cfpConfig.getStringList("ids")).toSet
+
   val NodeId: String = cc.getString("node-id")
 
   // Node configuration
   val nc: Config = cc.getConfig(s"nodes.${NodeId}")
 
   val NrOfAgentsOfRoleOnNode: Map[String, Int] = {
-    import scala.collection.JavaConverters._
     nc.root.asScala.collect {
       case (key, value: ConfigObject) => (key -> value.toConfig.getInt("nr-of-agents"))
     }.toMap
@@ -58,21 +62,18 @@ class CFABCastSettings(config: Config) extends Extension {
   val ac: Config = nc.getConfig("acceptor")
 
   val ProposerIdsByName: Map[String, String] = {
-    import scala.collection.JavaConverters._
     pc.root.asScala.collect {
       case (key, value: ConfigObject) => (key -> value.toConfig.getString("id"))
     }.toMap
   }
 
   val LearnerIdsByName: Map[String, String] = {
-    import scala.collection.JavaConverters._
     lc.root.asScala.collect {
       case (key, value: ConfigObject) => (key -> value.toConfig.getString("id"))
     }.toMap
   }
 
   val AcceptorIdsByName: Map[String, String] = {
-    import scala.collection.JavaConverters._
     ac.root.asScala.collect {
       case (key, value: ConfigObject) => (key -> value.toConfig.getString("id"))
     }.toMap

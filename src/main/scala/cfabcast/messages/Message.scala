@@ -71,7 +71,7 @@ case object WhoIsLeader
 /*
  * Collision-fast Oracle Messages
  */
-case class ProposerSet(replyTo: ActorRef, proposersRef: Set[ActorRef]) extends Message
+case class Proposers(replyTo: ActorRef, proposers: Map[AgentId, ActorRef]) extends Message
 
 /*
  * Console Messages

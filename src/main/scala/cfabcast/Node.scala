@@ -40,7 +40,7 @@ class Node extends Actor with ActorLogging {
   val protocolRoles = settings.ProtocolRoles
 
   log.info("NODE AGENTS: {}", nodeAgents)
-  
+
   // Agents of the protocol
   var proposers = Map.empty[AgentId, ActorRef]
   var acceptors = Map.empty[AgentId, ActorRef]
@@ -53,7 +53,7 @@ class Node extends Actor with ActorLogging {
   var servers = Set.empty[ActorRef]
 
   for((name, id) <- proposersIds) {
-    proposers += (id -> context.actorOf(ProposerActor.props(id), name=s"$name")) 
+    proposers += (id -> context.actorOf(ProposerActor.props(id), name=s"$name"))
   }
 
   for ((name, id) <- learnersIds) {
@@ -63,14 +63,14 @@ class Node extends Actor with ActorLogging {
   for ((name, id) <- acceptorsIds) {
     acceptors += (id -> context.actorOf(AcceptorActor.props(id), name=s"$name"))
   }
-  
+
   log.info("PROPOSERS: {}", proposers)
   log.info("ACCEPTORS: {}", acceptors)
   log.info("LEARNERS:  {}", learners)
 
   // A Set of nodes(members) in the cluster that this node knows about
   var nodes = Set.empty[Address]
-  
+
   var members = Map.empty[ActorRef, ClusterConfiguration]
 
   val console = context.actorOf(Props[ConsoleClient], "console")
@@ -96,14 +96,14 @@ class Node extends Actor with ActorLogging {
   }
 
   def memberPath(address: Address): ActorPath = RootActorPath(address) / "user" / "node"
-  
+
   def notifyAll(config: ClusterConfiguration) = {
     for (p <- proposers.values if !proposers.isEmpty) { p ! UpdateConfig(config) }
     for (a <- acceptors.values if !acceptors.isEmpty) { a ! UpdateConfig(config) }
     for (l <- learners.values  if !learners.isEmpty)  { l ! UpdateConfig(config) }
   }
 
-  def getRandomAgent(from: Vector[ActorRef]): Option[ActorRef] = 
+  def getRandomAgent(from: Vector[ActorRef]): Option[ActorRef] =
     if (from.isEmpty) None
     else Some(from(Random.nextInt(from.size)))
 
@@ -151,16 +151,16 @@ class Node extends Actor with ActorLogging {
     case Command(cmd: String) =>
       log.debug("Received COMMAND {} ", cmd)
       cmd match {
-        case "pstate"   => proposers.values.foreach(_ ! GetState) 
-        case "astate"   => acceptors.values.foreach(_ ! GetState) 
+        case "pstate"   => proposers.values.foreach(_ ! GetState)
+        case "astate"   => acceptors.values.foreach(_ ! GetState)
         case "lstate"   => learners.values.foreach(_ ! GetState)
         case "interval" => learners.values.foreach(_ ! GetIntervals)
         case "config"   => log.info("{} - CONFIG: {}", nodeId, config)
-        case "all"      => 
+        case "all"      =>
           config.proposers.values.zipWithIndex.foreach { case (ref, i) =>
             ref ! Broadcast(serializer.toBinary(cmd ++ "_" ++ i.toString))
           }
-        case _ => 
+        case _ =>
           if(proposers.nonEmpty) {
             val data = serializer.toBinary(cmd)
             proposers.values.toVector(Random.nextInt(proposers.size)) ! Broadcast(data)
@@ -174,7 +174,7 @@ class Node extends Actor with ActorLogging {
 
     case msg: RegisterServer => registerServer(msg.server)
 
-    case TakeIntervals(interval) => log.info("Learner {} learned in instances: {}", sender, interval) 
+    case TakeIntervals(interval) => log.info("Learner {} learned in instances: {}", sender, interval)
 
     case msg: DeliveredVMap =>
       val vmap = msg.vmap.get
@@ -182,7 +182,7 @@ class Node extends Actor with ActorLogging {
         log.warning("Nothing learned yet! Value is BOTTOM! = {}", vmap)
       else {
         log.debug("NODE:{} - Received vmap from {} with [{}] values.", nodeId, sender, vmap.filter{ case (_, v) => v != Nil }.size)
-        servers.foreach( server => { 
+        servers.foreach( server => {
           log.debug("Sending response to server: {}", server)
           vmap.foreach({case (_ , value) =>
             value match {
@@ -190,12 +190,12 @@ class Node extends Actor with ActorLogging {
                 val response = v.value.getOrElse(Array[Byte]())
                 //log.debug("Value in response: {}", serializer.fromBinary(response))
                 log.debug("NODE:{} - SENDING DELIVERED Value in response: {}", self, response)
-                server ! Delivery(response) 
+                server ! Delivery(response)
 /*                val v = values.value
                 if (v.nonEmpty){
                   log.debug("NODE:{} - SENDING DELIVERED [{}] values", nodeId, v.size)
-                  v.foreach(o => o match { 
-                    case Some(response) => 
+                  v.foreach(o => o match {
+                    case Some(response) =>
                       //log.debug("Value in response: {}", serializer.fromBinary(response))
                       server ! Delivery(response)
                     case None => //do nothing if the value is Nil
@@ -228,7 +228,7 @@ class Node extends Actor with ActorLogging {
       log.warning("Member {} detected as unreachable: {}", self, member)
       //TODO notify the leaderOracle and adopt new police
 
-    case GetCFPs => cfproposerOracle ! ProposerSet(sender, config.proposers.values.toSet)
+    case GetCFPs => cfproposerOracle ! Proposers(sender, config.proposers)
 
     case m =>
       log.error("A unknown message [ {} ] received!", m)

@@ -165,7 +165,7 @@ trait Proposer extends ActorLogging {
             context.become(proposerBehavior(config, instances + (instance -> propose(proposalMsg, state, config))))
           } else {
             val cfps = round.cfproposers
-            log.warning("{} - Receive a broadcast: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
+            log.info("{} - Receive a broadcast: {}, BUT I NOT CFP, forward to a cfproposers {}", id, msg, cfps)
             if(cfps.nonEmpty) {
               cfps.toVector(Random.nextInt(cfps.size)) forward msg
             } else {
