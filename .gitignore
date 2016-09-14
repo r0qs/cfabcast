@@ -12,6 +12,7 @@ libmcad_test_scripts/logsmcast/
 libmcad_test_scripts/logs/
 logs/
 .ensime
+.ensime_cache/
 .history
 .tags
 *.log
